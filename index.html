@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#1c1b22" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Loopsy Doopsy</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <button class="icon-btn" id="menuBtn" aria-label="Settings">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+      </button>
+
+      <button class="tempo" id="tempoBtn" aria-label="Tempo">
+        <span class="beats" id="beatDots"></span>
+        <span class="bpm"><b id="bpmVal">90</b><small>bpm</small></span>
+      </button>
+
+      <button class="play-btn" id="playBtn" aria-label="Play">
+        <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z" /></svg>
+        <svg class="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+      </button>
+
+      <button class="icon-btn toggle" id="metroBtn" aria-label="Metronome" aria-pressed="false">
+        <svg viewBox="0 0 24 24"><path d="M9 3h6l4 18H5zM12 15l5-9M8 15h8" /></svg>
+      </button>
+
+      <button class="rec-btn" id="recBtn" aria-label="Record performance">
+        <span class="rec-dot"></span><span class="rec-label" id="recLabel">Rec</span>
+      </button>
+
+      <button class="icon-btn toggle" id="liveBtn" aria-label="Live mic" aria-pressed="false">
+        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M6 11a6 6 0 0012 0M12 17v4" /></svg>
+        <span class="live-tag">LIVE</span>
+      </button>
+
+      <button class="icon-btn" id="takesBtn" aria-label="Recordings">
+        <svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="17" cy="16" r="3" /></svg>
+        <span class="count" id="takesCount" hidden>0</span>
+      </button>
+    </header>
+
+    <main class="grid" id="grid"></main>
+
+    <footer class="dock">
+      <div class="len-picker" role="radiogroup" aria-label="Length of next loop">
+        <span>Next loop</span>
+        <button data-bars="1">1</button>
+        <button data-bars="2">2</button>
+        <button data-bars="4">4</button>
+        <button data-bars="8">8</button>
+        <span>bars</span>
+      </div>
+      <p class="hint" id="hint">Tap an empty pad to record · tap to play · hold for options</p>
+    </footer>
+
+    <div class="toast" id="toast" hidden><span id="toastMsg"></span><button id="toastAction"></button></div>
+
+    <!-- Pad options -->
+    <dialog class="sheet" id="padSheet">
+      <form method="dialog">
+        <h2 id="padTitle">Pad</h2>
+        <div class="seg" id="modeSeg">
+          <button type="button" data-mode="loop">∞ Loop<small>tap on / off, stays in time</small></button>
+          <button type="button" data-mode="oneshot">1× One-shot<small>tap to play once</small></button>
+        </div>
+        <label class="row">Volume <input type="range" id="padVol" min="0" max="1.5" step="0.01" /></label>
+        <div class="actions">
+          <button type="button" id="padTrim">✂︎ Trim</button>
+          <button type="button" id="padRerec">● Re-record</button>
+          <button type="button" id="padClear" class="danger">Clear</button>
+        </div>
+        <button class="close" value="close">Done</button>
+      </form>
+    </dialog>
+
+    <!-- Trim editor -->
+    <dialog class="sheet wide" id="trimSheet">
+      <form method="dialog">
+        <h2>Trim <small id="trimInfo"></small></h2>
+        <p class="sub">Drag the window to line the loop up. The dim parts either side were caught just before you started and after you finished, so a slightly early start or an overrun can be fixed here.</p>
+        <canvas id="trimCanvas"></canvas>
+        <div class="trim-row">
+          <button type="button" id="nudgeL" aria-label="10 ms earlier">‹</button>
+          <div class="len-seg" id="trimLen">
+            <button type="button" data-len="free">Free</button>
+            <button type="button" data-len="1">1</button>
+            <button type="button" data-len="2">2</button>
+            <button type="button" data-len="4">4</button>
+            <button type="button" data-len="8">8</button>
+          </div>
+          <button type="button" id="nudgeR" aria-label="10 ms later">›</button>
+        </div>
+        <label class="row check"><input type="checkbox" id="trimSnap" checked /> Snap to 1/16 notes</label>
+        <label class="row check"><input type="checkbox" id="trimFold" /> Wrap overrun into the start (keeps a held note ringing across the loop)</label>
+        <div class="actions">
+          <button type="button" id="trimPreview">▶ Preview</button>
+          <button type="button" id="trimReset">Reset</button>
+          <button type="button" id="trimCancel">Cancel</button>
+          <button value="ok" class="primary">Done</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Tempo & settings -->
+    <dialog class="sheet" id="settingsSheet">
+      <form method="dialog">
+        <h2>Tempo &amp; settings</h2>
+        <div class="tempo-row">
+          <button type="button" id="bpmDown">−</button>
+          <input type="number" id="bpmInput" min="40" max="240" step="1" inputmode="decimal" />
+          <button type="button" id="bpmUp">+</button>
+          <button type="button" id="tapBtn" class="tap">Tap</button>
+        </div>
+        <label class="row">Beats per bar
+          <select id="bpbInput"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option></select>
+        </label>
+        <p class="note" id="tempoLock" hidden>Tempo is locked while pads hold recordings so everything stays in time. Clear all pads to change it.</p>
+
+        <h3>Recording</h3>
+        <label class="row check"><input type="checkbox" id="setCountIn" /> One-bar count-in before recording</label>
+        <label class="row check"><input type="checkbox" id="setClickRec" /> Click while recording a pad</label>
+        <label class="row check"><input type="checkbox" id="setAutoPlay" /> Start looping as soon as a recording finishes</label>
+        <label class="row check"><input type="checkbox" id="setEcho" /> Echo cancellation (helps with no headphones; can dull the sound)</label>
+
+        <h3>Playing</h3>
+        <label class="row">Loops start / stop on
+          <select id="setQuantize"><option value="bar">next bar</option><option value="beat">next beat</option><option value="off">immediately</option></select>
+        </label>
+        <label class="row check"><input type="checkbox" id="setQuantShots" /> One-shots snap to the grid too</label>
+
+        <h3>Live mode</h3>
+        <label class="row check"><input type="checkbox" id="setMonitor" /> Hear the mic through the app (headphones only!)</label>
+
+        <h3>Latency</h3>
+        <p class="sub">How late the mic hears things. Calibrate with the speaker on and headphones off.</p>
+        <div class="tempo-row">
+          <input type="number" id="latInput" placeholder="auto" min="0" max="500" step="1" inputmode="numeric" /><span>ms</span>
+          <button type="button" id="calBtn">Calibrate</button>
+        </div>
+
+        <div class="actions">
+          <button type="button" id="clearAll" class="danger">Clear all pads</button>
+          <button value="close" class="primary">Done</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Takes -->
+    <dialog class="sheet" id="takesSheet">
+      <form method="dialog">
+        <h2>Recordings</h2>
+        <p class="sub">Press <b>Rec</b> at the top to record what you play on the pads. Turn on <b>Live</b> to sing or play over the top as well.</p>
+        <ul class="takes" id="takesList"></ul>
+        <button class="close" value="close">Done</button>
+      </form>
+    </dialog>
+
+    <!-- First-run start screen (audio needs a tap to unlock on phones) -->
+    <div class="splash" id="splash">
+      <div class="logo">
+        <span style="--c: var(--p0)"></span><span style="--c: var(--p1)"></span><span style="--c: var(--p2)"></span><span style="--c: var(--p3)"></span>
+      </div>
+      <h1>Loopsy Doopsy</h1>
+      <ol>
+        <li>Pick a tempo and a loop length.</li>
+        <li>Tap a pad. The ring counts you in, records for exactly that many bars, then starts looping.</li>
+        <li>Watch the ring: it turns <b>white</b> in the last bar so you know when to finish.</li>
+      </ol>
+      <button class="primary big" id="startBtn">Let's loop</button>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>

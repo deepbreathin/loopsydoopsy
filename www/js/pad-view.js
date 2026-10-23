@@ -1,17 +1,22 @@
 // Draws one pad: a circular waveform with beat ticks and a playhead sweeping round.
 // 12 o'clock is always the start of the loop, so you can see exactly where it comes round.
+// A slim strip on the right shows pitch: a dot that jumps up and down with the melody.
+
+import { isNatural, midiName } from './pitch.js';
 
 const TAU = Math.PI * 2;
 const angle = (f) => -Math.PI / 2 + f * TAU;
 
 export function drawPad(g, w, h, pad, v) {
   g.clearRect(0, 0, w, h);
-  const cx = w / 2;
+  const sw = Math.max(8, Math.min(18, w * 0.055)); // pitch strip width
+  const cx = (w - sw * 1.6) / 2;
   const cy = h / 2;
-  const R = Math.min(w, h) * 0.43;
+  const R = Math.min(w - sw * 2.6, h) * 0.43;
   const r0 = R * 0.56;
   const ink = 'rgba(20,14,30,';
   const lw = Math.max(1.5, R * 0.025);
+  if (v.state !== 'empty') pitchStrip(g, w - sw - Math.max(6, sw * 0.5), h * 0.14, h * 0.86, sw, ink, v.pitch);
 
   // Ring track.
   g.lineWidth = lw;
@@ -64,7 +69,7 @@ export function drawPad(g, w, h, pad, v) {
     g.stroke();
     g.setLineDash([]);
     label(g, cx, cy, R * 0.6, 'rgba(255,255,255,0.95)', String(v.countdown), true);
-    label(g, cx, cy + R * 0.5, R * 0.13, ink + '0.7)', 'get ready');
+    label(g, cx, cy + R * 0.5, R * 0.13, ink + '0.7)', v.countLabel);
     return;
   }
 
@@ -118,6 +123,28 @@ export function drawPad(g, w, h, pad, v) {
     g.stroke();
   }
   badge(g, cx, cy, R, ink, v);
+}
+
+// Vertical pitch meter: higher notes higher up. Recent notes leave a fading trail.
+function pitchStrip(g, x, top, bottom, sw, ink, p) {
+  g.fillStyle = ink + '0.13)';
+  g.beginPath();
+  g.roundRect(x, top, sw, bottom - top, sw / 2);
+  g.fill();
+  if (!p) return;
+  const y = (m) => bottom - sw / 2 - ((m - p.lo) / (p.hi - p.lo)) * (bottom - top - sw);
+  const clampY = (m) => Math.max(top + sw / 2, Math.min(bottom - sw / 2, y(m)));
+  const n = p.trail.length;
+  p.trail.forEach((m, i) => {
+    if (Number.isNaN(m)) return;
+    g.globalAlpha = 0.12 + (0.45 * i) / n;
+    dot(g, x + sw / 2, clampY(m), sw * 0.3, ink + '1)');
+  });
+  g.globalAlpha = 1;
+  if (Number.isNaN(p.now)) return;
+  dot(g, x + sw / 2, clampY(p.now), sw * 0.5, 'rgba(20,14,30,0.85)');
+  dot(g, x + sw / 2, clampY(p.now), sw * 0.32, '#fff');
+  if (sw >= 12) label(g, x + sw / 2, bottom + sw * 0.9, sw * 0.62, ink + '0.6)', midiName(p.now));
 }
 
 function circle(g, x, y, r) {
@@ -178,7 +205,7 @@ function label(g, x, y, size, color, text, bold) {
 }
 
 function badge(g, cx, cy, R, ink, v) {
-  const text = v.mode === 'loop' ? `∞ ${v.bars} bar${v.bars === 1 ? '' : 's'}` : '1× shot';
+  const text = v.pendingLabel || (v.mode === 'loop' ? `∞ ${v.bars} bar${v.bars === 1 ? '' : 's'}` : '1× shot');
   label(g, cx, cy, R * 0.13, ink + '0.6)', text);
 }
 
@@ -226,26 +253,65 @@ export function drawSing(g, w, h, v) {
     meter = { x: left, y: h * 0.2, w: w - left - h * 0.3, h: h * 0.6 };
   } else {
     const R = Math.min(w, h);
-    drawMic(g, w / 2, h * 0.28, R * 0.1, ink);
-    label(g, w / 2, h * 0.68, R * 0.085, ink, title, true);
-    label(g, w / 2, h * 0.79, R * 0.055, soft, sub);
-    meter = { x: w * 0.12, y: h * 0.42, w: w * 0.76, h: h * 0.16 };
+    drawMic(g, w / 2, h * 0.2, R * 0.08, ink);
+    label(g, w / 2, h * 0.75, R * 0.085, ink, title, true);
+    label(g, w / 2, h * 0.85, R * 0.055, soft, sub);
+    meter = { x: w * 0.16, y: h * 0.4, w: w * 0.74, h: h * 0.24 };
   }
   if (meter.w < 30) return;
 
-  // Level meter: newest on the right. Bars are in dB so quiet humming still shows.
+  // Loudness as faint bars along the bottom, pitch as a line on top (newest on the right),
+  // over faint note lines, so you can see whether you're going up or down.
   const n = v.levels.length;
-  const bars = Math.max(8, Math.min(n, Math.floor(meter.w / 5)));
-  const bw = meter.w / bars;
-  const mid = meter.y + meter.h / 2;
-  for (let i = 0; i < bars; i++) {
-    const lv = v.micOpen ? v.levels[n - bars + i] : 0;
-    const db = 20 * Math.log10(lv + 1e-6);
-    const f = Math.max(0.04, Math.min(1, (db + 60) / 54));
-    const bh = f * meter.h;
-    g.fillStyle = !v.micOpen ? soft : db > -3 ? '#ff2d46' : v.recording ? '#fff' : v.live ? '#1f9d4f' : ink;
-    g.globalAlpha = v.micOpen ? 0.9 : 0.35;
-    g.fillRect(meter.x + i * bw + bw * 0.15, mid - bh / 2, Math.max(1, bw * 0.7), bh);
+  const cols = Math.max(8, Math.min(n, Math.floor(meter.w / 4)));
+  const cw = meter.w / cols;
+  const view = v.view;
+  for (let i = 0; i < cols; i++) {
+    const lv = v.micOpen ? v.levels[n - cols + i] : 0;
+    const f = Math.max(0.03, Math.min(1, (20 * Math.log10(lv + 1e-6) + 60) / 54));
+    g.fillStyle = lv > 0.7 ? '#ff2d46' : soft;
+    g.globalAlpha = v.micOpen ? 0.35 : 0.2;
+    g.fillRect(meter.x + i * cw + cw * 0.2, meter.y + meter.h - f * meter.h * 0.4, Math.max(1, cw * 0.6), f * meter.h * 0.4);
   }
   g.globalAlpha = 1;
+  const py = (m) => meter.y + meter.h - ((m - view.lo) / (view.hi - view.lo)) * meter.h;
+  g.font = `600 ${Math.round(Math.max(9, meter.h * 0.075))}px system-ui, sans-serif`;
+  g.textAlign = 'right';
+  g.textBaseline = 'middle';
+  for (let m = Math.ceil(view.lo); m <= view.hi; m++) {
+    const y = py(m);
+    g.fillStyle = soft;
+    g.globalAlpha = m % 12 === 0 ? 0.45 : isNatural(m) ? 0.18 : 0.07;
+    g.fillRect(meter.x, y, meter.w, 1);
+    if (!strip && isNatural(m) && meter.h / (view.hi - view.lo) > 9) {
+      g.globalAlpha = 0.6;
+      g.fillText(midiName(m), meter.x - 4, y);
+    }
+  }
+  g.globalAlpha = 1;
+  g.strokeStyle = ink;
+  g.lineWidth = Math.max(2, meter.h * 0.035);
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  g.beginPath();
+  let pen = false;
+  for (let i = 0; i < cols; i++) {
+    const m = v.micOpen ? v.pitches[n - cols + i] : NaN;
+    if (Number.isNaN(m)) {
+      pen = false;
+      continue;
+    }
+    const x = meter.x + (i + 0.5) * cw;
+    const y = Math.max(meter.y, Math.min(meter.y + meter.h, py(m)));
+    pen ? g.lineTo(x, y) : g.moveTo(x, y);
+    if (!pen) g.lineTo(x + 0.1, y);
+    pen = true;
+  }
+  g.stroke();
+  const last = v.micOpen ? v.pitches[n - 1] : NaN;
+  if (!Number.isNaN(last)) {
+    const y = Math.max(meter.y, Math.min(meter.y + meter.h, py(last)));
+    dot(g, meter.x + meter.w - cw / 2, y, g.lineWidth * 1.6, v.recording ? '#fff' : ink);
+    if (!strip) label(g, meter.x + meter.w, meter.y - meter.h * 0.12, Math.max(11, meter.h * 0.12), ink, midiName(last), true);
+  }
 }

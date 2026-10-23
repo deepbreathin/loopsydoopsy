@@ -43,18 +43,23 @@ Browsers only allow the microphone on **https** or `localhost`. The Android app 
 
 | Do this | What happens |
 | --- | --- |
-| Tap an **empty pad** | Records a loop. If nothing is playing, it starts with a one-bar count-in (4·3·2·1 on the pad and clicks you can hear). If loops are already playing, recording starts on the next bar line. |
+| Tap an **empty pad** | Records a loop. With nothing playing, you get a one-bar countdown on the pad (silent unless you switch on beeps in Settings), then it records. With loops playing, it waits until they **come back round to their beginning**, so the new loop lines up with them. |
 | Watch the **ring** while recording | It fills **red** as you record, with beat ticks round the edge. In the **last bar it turns white** and counts down "finish in 3·2·1", so you know when to stop. |
-| Tap a pad **while it's recording** | Finishes at the next bar line instead, so the loop is shorter but still a whole number of bars. |
-| Tap a **loop pad** | Switches it on or off. The change happens on the next bar (adjustable), so you can't come in off-beat. |
-| Tap a **one-shot pad** | Plays the sound once, straight away, from the moment you touch it (Keezy style). Tap fast to stutter. |
+| Tap a pad **while it's recording** | Finishes early, at the next 1, 2 or 4 bar mark, so it still lines up. |
+| Tap a **loop pad** | Switches it on or off. A loop always starts **from its beginning**, timed to come in when the other loops come round; the pad says "in 3" while it waits. |
+| Tap a **one-shot pad** | Plays the sound once, straight away (Keezy style). Tap fast to stutter. |
 | **Hold** a pad | Options: Loop / One-shot, volume, **Trim**, re-record, clear (with undo). |
-| **▶ / ■** | Starts or stops the transport. Loops you've switched on resume together. |
+| **▶ / ■** | Starts or stops everything. Loops you've switched on start together from the top. |
 | **Next loop: 1 · 2 · 4 · 8 bars** | Sets the length of the next recording. |
-| **Sing on top** (the white tile) | One tap: starts the loops you've switched on and records them **plus your voice**. Tap again to stop and save. Its meter shows your mic level, so you can see quiet humming is getting through. |
-| **Rec** (top bar) | Records the pads only. Turn on **Live** as well to add your voice, which is what Sing on top does in one tap. |
-| **♫** | Your recorded jams: play them, share or save them as WAV, delete them (with undo). |
-| **Tempo** (tap the bpm) | BPM, tap tempo, time signature, count-in, quantise, latency calibration and the rest of the settings. |
+| **Sing on top** (the white tile) | One tap: starts the loops you've switched on and records them **plus your voice**. Tap again to stop and save. It shows a live trace of your pitch, so you can see quiet humming is getting through. |
+| **🎼 Song** | Plan your song: a list of sections, each a length and the pads that play in it. **Build it up for me** makes a starting arrangement. **Play song** plays it hands-free; **Play & sing on top** records you over it and saves the take when the song ends. |
+| **♫** | Your recorded takes: play them, share or save them as WAV, delete them (with undo). |
+| **☰ Menu** | **Projects** (save, open, start new or duplicate a workspace), Song, **Looping basics**, and settings. |
+| **Tempo** (tap the bpm) | BPM, tap tempo, time signature, count-in, mic boost, latency calibration and the rest of the settings. |
+
+### Pitch strip
+
+The slim strip on the right of each pad shows **pitch**: a dot that jumps up for high notes and down for low ones as the loop plays, leaving a short trail. On bigger screens it names the note too (A3, C4…). It works out each loop's melody when you record it, and follows the mic live while you record, so you can see where each layer sits and spread them out (low, middle, high).
 
 ### Trim
 
@@ -73,11 +78,12 @@ The **circular waveform** comes from the app in the reference screenshot. A loop
 
 1. **Fixed, grid-locked lengths.** Tempo plus bar count sets the loop length before you record, and recording starts and stops on sample-exact bar lines. The audio is cut at exact frame numbers stamped by an AudioWorklet, not by a timer that might fire late. Every loop is a whole number of bars, so loops of different lengths (1, 2, 4, 8 bars) always line up.
 2. **12 o'clock is always "1".** The big tick at the top marks the start of the loop, bar lines are medium ticks and beats are small ticks. You can read the loop's length and your position in it at a glance.
-3. **Get-ready and wrap-up cues.** There's a count-in on the pad itself, beat lights in the top bar, a red progress ring while recording, and a white ring with a countdown for the last bar.
-4. **Forgiving capture.** Pre-roll and overrun are recorded too, so small timing mistakes can be fixed in Trim instead of re-recorded.
-5. **Latency compensation.** Phones add delay between the speaker and the mic. Without compensation every overdub drifts late, which loopers like Loopy Pro and Ableton have to deal with as well ([Loopy Pro request](https://roadmap.loopypro.com/feature-requests/p/latency-adjustmentcustom-track-offset-parameter), [Cycling '74 thread](https://cycling74.com/forums/time-accuracy-and-latency-compensation)). Loopsy Doopsy estimates the delay automatically, and **Settings → Calibrate** measures it properly: it plays clicks through the speaker and listens for them. Live-mic takes are shifted back by the same amount, so your riffing lines up with the pads in the saved file.
-6. **Made for voice.** **Mic boost** (Settings) adds up to +12 dB for quiet humming. A limiter on the output stops stacked vocal loops from distorting. The mic's own processing (noise suppression, auto-gain) is switched off so loops keep their natural dynamics.
-7. **Foldables.** The layout picks whichever arrangement gives the biggest pads on the current screen:
+3. **Get-ready and wrap-up cues.** A silent count-in on the pad itself, beat lights in the top bar, a red progress ring while recording, and a white ring with a countdown for the last bar. Optional count-in beeps always stop before the downbeat, so they never end up in a take; there's no metronome to leak into recordings.
+4. **Everything starts from the top.** A loop never comes in halfway through. It waits for the loops already playing to come round, then plays from its first beat. New recordings start at the same moment, so layers line up the way you heard them.
+5. **Forgiving capture.** Pre-roll and overrun are recorded too, so small timing mistakes can be fixed in Trim instead of re-recorded.
+6. **Latency compensation.** Phones add delay between the speaker and the mic. Without compensation every overdub drifts late, which loopers like Loopy Pro and Ableton have to deal with as well ([Loopy Pro request](https://roadmap.loopypro.com/feature-requests/p/latency-adjustmentcustom-track-offset-parameter), [Cycling '74 thread](https://cycling74.com/forums/time-accuracy-and-latency-compensation)). Loopsy Doopsy estimates the delay automatically, and **Settings → Calibrate** measures it properly: it plays clicks through the speaker and listens for them. Live-mic takes are shifted back by the same amount, so your riffing lines up with the pads in the saved file.
+7. **Made for voice.** **Mic boost** (Settings) adds up to +12 dB for quiet humming. A limiter on the output stops stacked vocal loops from distorting. The mic's own processing (noise suppression, auto-gain) is switched off so loops keep their natural dynamics.
+8. **Foldables.** The layout picks whichever arrangement gives the biggest pads on the current screen:
 
    | Screen | Layout |
    | --- | --- |
@@ -87,7 +93,7 @@ The **circular waveform** comes from the app in the reference screenshot. A loop
    | Half-open like a book | Four pads either side of the fold (when Chrome reports the hinge through the viewport-segments API) |
 
    Folding or unfolding doesn't restart the app, so a loop keeps playing across the change.
-8. **Colourful, but readable.** The eight pads have distinct bright colours with dark ink on top. Empty pads are dimmed, pads with a sound are at full colour, and pads that are playing glow.
+9. **Colourful, but readable.** The eight pads have distinct bright colours with dark ink on top. Empty pads are dimmed, pads with a sound are at full colour, and pads that are playing glow.
 
 On Android the screen stays on while the app is open, the volume buttons control the music, and Back closes whatever sheet is open (or sends the app to the background, so it doesn't quit mid-jam).
 
@@ -100,24 +106,27 @@ www/                  the app (everything below lives in here)
 android/              Capacitor Android project (MainActivity keeps the screen on, volume keys → music)
 .github/workflows/    builds the APK on every push
 
-index.html            layout + sheets (pad options, trim, settings, recordings)
+index.html            layout + sheets (pad options, trim, settings, recordings, projects, song, looping basics)
 css/style.css         styles; portrait 2×4 grid, landscape 4×2
-js/main.js            UI wiring, gestures, persistence, render loop
-js/engine.js          Web Audio: transport, metronome, recording, playback, session recorder, calibration
+js/main.js            UI wiring, gestures, render loop
+js/engine.js          Web Audio: transport, count-in, recording, playback, song playback, session recorder, calibration
 js/capture-worklet.js AudioWorklet that taps audio with frame-accurate timestamps
 js/pad-view.js        canvas drawing of the circular pads
 js/trim.js            trim editor
 js/timing.js          pure maths (grid, loop cutting, peaks, onset detection, tap tempo) — unit-tested
 js/layout.js          picks the pad grid for the screen / fold — unit-tested
 js/native.js          Android bridges: back button, share sheet
-js/storage.js         IndexedDB: pads + settings survive reloads; recorded takes
+js/pitch.js           voice pitch detection (YIN) and pitch contours — unit-tested
+js/projects.js        projects: save / open / new / duplicate, autosave
+js/song.js            song editor and the "build it up" arrangement — unit-tested
+js/storage.js         IndexedDB: projects and recorded takes
 js/wav.js             WAV encoder
 sw.js                 offline cache
 ```
 
 ## Ideas for next steps
 
-- Several saved boards (Keezy-style), and bundled starter kits.
+- Bundled starter kits, and exporting a project as a file to move it between phones.
 - Resampling: record a pad from the app's own output.
 - Per-pad effects (pitch, filter, reverse) and a mixer view.
 - Export the stems from a jam as well as the mixdown.

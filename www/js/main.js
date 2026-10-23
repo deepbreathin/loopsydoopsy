@@ -2,6 +2,9 @@ import { Engine, PAD_COUNT } from './engine.js';
 import { drawPad, drawSing } from './pad-view.js';
 import * as layout from './layout.js';
 import { isNative, onBackButton, shareFile } from './native.js';
+import { pitchRange } from './pitch.js';
+import { Projects } from './projects.js';
+import { SongEditor } from './song.js';
 import { TrimEditor } from './trim.js';
 import * as store from './storage.js';
 import { encodeWav } from './wav.js';
@@ -12,13 +15,10 @@ const $ = (id) => document.getElementById(id);
 const DEFAULTS = {
   bpm: 90,
   beatsPerBar: 4,
-  loopBars: 2,
+  loopBars: 4,
   countIn: true,
-  metronome: false,
-  clickWhileRecording: true,
+  countInBeeps: false,
   autoPlay: true,
-  quantize: 'bar',
-  quantizeOneShots: false,
   latencyMs: null,
   echoCancel: false,
   monitor: false,
@@ -28,32 +28,32 @@ const DEFAULTS = {
 
 const settings = { ...DEFAULTS };
 const engine = new Engine(settings);
-const trim = new TrimEditor(engine, { onClose: () => save() });
+let song = null; // { sections: [{ bars, pads: [bool × 8] }] }
+const projects = new Projects({
+  engine,
+  settings,
+  defaults: DEFAULTS,
+  getSong: () => song,
+  setSong: (s) => (song = s ?? null),
+  toast: (m) => toast(m),
+  onSwitch: () => {
+    syncToggles();
+    $('menuProject').textContent = projects.current?.name ?? '';
+  },
+});
+const save = () => projects.save();
+const trim = new TrimEditor(engine, { onClose: save });
+const songEditor = new SongEditor({
+  engine,
+  getSong: () => song,
+  setSong: (s) => {
+    song = s;
+    save();
+  },
+  onPlay: () => playSong(false),
+  onSing: () => playSong(true),
+});
 const padEls = [];
-
-// ---------- persistence ----------
-
-let saveTimer;
-function save() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    const pads = engine.pads.map((p) => (p.state === 'ready' && p.raw ? engine.snapshot(p) : null));
-    store.saveBoard({ settings: { ...settings, liveMic: false }, pads }).catch((e) => console.warn('save failed', e));
-  }, 400);
-}
-
-async function load() {
-  try {
-    const board = await store.loadBoard();
-    if (board) {
-      Object.assign(settings, board.settings);
-      board.pads?.forEach((s, i) => s && engine.restore(engine.pads[i], s));
-    }
-  } catch (e) {
-    console.warn('load failed', e);
-  }
-  refreshTakesCount();
-}
 
 // ---------- toast ----------
 
@@ -73,10 +73,12 @@ function toast(msg, action, fn) {
 
 function micError(e) {
   console.warn(e);
-  toast(e?.name === 'NotAllowedError' ? 'Microphone blocked — allow it in your browser settings' : 'Could not open the microphone');
+  toast(e?.name === 'NotAllowedError' ? 'Microphone blocked — allow it in your phone’s settings' : 'Could not open the microphone');
 }
 
 // ---------- pads ----------
+
+let singView;
 
 function buildPads() {
   const grid = $('grid');
@@ -97,7 +99,7 @@ function buildPads() {
   el.innerHTML = '<canvas></canvas>';
   grid.append(el);
   const canvas = el.querySelector('canvas');
-  singView = { el, canvas, g: canvas.getContext('2d'), w: 0, h: 0 };
+  singView = { el, canvas, g: canvas.getContext('2d'), w: 0, h: 0, range: { lo: 52, hi: 69 } };
   el.addEventListener('click', toggleSing);
   const relayout = () => {
     layout.apply(grid, [...padEls.map((p) => p.el), el]);
@@ -106,8 +108,6 @@ function buildPads() {
   new ResizeObserver(relayout).observe(grid);
   window.addEventListener('resize', relayout); // also fires when a foldable changes posture
 }
-
-let singView;
 
 function sizeCanvases() {
   const dpr = window.devicePixelRatio || 1;
@@ -175,7 +175,7 @@ async function tap(pad, el) {
     case 'recording': {
       const before = pad.rec.end;
       engine.finishEarly(pad);
-      if (pad.rec.end === before) toast('Finishing at the end of this bar');
+      if (pad.rec.end === before) toast('Finishing at the end of the loop');
       break;
     }
     case 'ready':
@@ -242,90 +242,62 @@ $('padClear').onclick = () => {
   });
 };
 
-// ---------- top bar ----------
+// ---------- play / sing ----------
 
 $('playBtn').onclick = async () => {
   await engine.init();
-  if (engine.running) engine.stopTransport();
+  if (engine.running) stopAll();
   else engine.startTransport();
 };
 
-$('metroBtn').onclick = () => {
-  settings.metronome = !settings.metronome;
-  syncToggles();
-  save();
-};
+// Stop everything; a "Play & sing" take stopped early is still saved.
+function stopAll() {
+  engine.stopTransport();
+  if (songSession && engine.session) stopSinging();
+}
 
-$('liveBtn').onclick = async () => {
-  settings.liveMic = !settings.liveMic;
-  syncToggles();
-  if (settings.liveMic) {
-    try {
-      await engine.ensureMic();
-      toast(settings.monitor ? 'Live mic on — you can hear yourself' : 'Live mic on — your voice goes into Rec');
-    } catch (e) {
-      settings.liveMic = false;
-      syncToggles();
-      micError(e);
-    }
-  }
-  engine.applyLiveSettings();
-};
-
-let sessionTimer;
 let sessionStarted = 0;
-let singOwnsLive = false; // the Sing tile switched Live on, so it switches it off again
+let songSession = false; // the current take was started by "Play & sing", so it ends with the song
 
 function setLive(on) {
   settings.liveMic = on;
-  syncToggles();
   engine.applyLiveSettings();
 }
 
-async function startJam({ withVoice }) {
-  if (withVoice && !settings.liveMic) {
-    singOwnsLive = true;
-    setLive(true);
-  }
+async function startSinging() {
+  setLive(true);
   try {
-    if (settings.liveMic) await engine.ensureMic();
+    await engine.ensureMic();
     engine.applyLiveSettings();
     await engine.startSession();
   } catch (e) {
-    if (singOwnsLive) setLive((singOwnsLive = false));
-    return micError(e);
-  }
-  // Singing on top: bring the backing in if it's switched on but stopped.
-  if (withVoice && !engine.running && engine.pads.some((p) => p.enabled && p.hasSound && p.mode === 'loop')) {
-    engine.startTransport();
+    setLive(false);
+    micError(e);
+    return false;
   }
   sessionStarted = Date.now();
-  const tickLabel = () => ($('recLabel').textContent = fmtTime((Date.now() - sessionStarted) / 1000));
-  tickLabel();
-  sessionTimer = setInterval(tickLabel, 500);
-  if (!settings.liveMic) toast('Recording the pads — turn on Live to add your voice');
+  return true;
+}
+
+async function toggleSing() {
+  if (engine.session) return stopSinging();
+  if (!(await startSinging())) return;
+  // Bring the backing in if it's switched on but stopped.
+  if (!engine.running && engine.pads.some((p) => p.enabled && p.hasSound && p.mode === 'loop')) engine.startTransport();
 }
 
 const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
-function toggleSing() {
-  if (engine.session) stopJam();
-  else startJam({ withVoice: true });
-}
-
-$('recBtn').onclick = () => (engine.session ? stopJam() : startJam({ withVoice: false }));
-
-async function stopJam() {
-  clearInterval(sessionTimer);
-  $('recLabel').textContent = 'Rec';
+async function stopSinging() {
+  songSession = false;
   const result = await engine.stopSession();
-  if (singOwnsLive) setLive((singOwnsLive = false));
+  setLive(false);
   if (!result || result.samples.length < result.sampleRate * 0.3) return toast('Recording too short');
   const blob = encodeWav(result.samples, result.sampleRate);
   const takes = await store.listTakes();
   const take = {
     id: Date.now(),
-    name: `Jam ${takes.length + 1}`,
+    name: `${projects.current?.name ?? 'Jam'} · take ${takes.length + 1}`,
     created: Date.now(),
     duration: result.samples.length / result.sampleRate,
     blob,
@@ -335,13 +307,47 @@ async function stopJam() {
   toast(`Saved “${take.name}”`, 'Open', openTakes);
 }
 
+async function playSong(sing) {
+  await engine.init();
+  if (!song?.sections?.length) return;
+  if (engine.session) await stopSinging();
+  if (sing && !(await startSinging())) return;
+  songSession = sing;
+  engine.playSong(song.sections);
+}
+
+engine.addEventListener('songend', () => {
+  if (songSession && engine.session) stopSinging();
+});
+
+// ---------- menu & sheets ----------
+
+$('menuBtn').onclick = () => {
+  $('menuProject').textContent = projects.current?.name ?? '';
+  $('menuSheet').showModal();
+};
+$('menuSheet').addEventListener('click', (e) => {
+  const what = e.target.closest('button')?.dataset.open;
+  if (!what) return;
+  $('menuSheet').close();
+  ({ projects: () => projects.show(), song: () => songEditor.open(), help: openHelp, settings: openSettings })[what]();
+});
 $('tempoBtn').onclick = () => openSettings();
-$('menuBtn').onclick = () => openSettings();
 $('takesBtn').onclick = () => openTakes();
+$('songBtn').onclick = () => {
+  if (engine.song) stopAll();
+  else songEditor.open();
+};
+engine.addEventListener('song', () => {
+  if ($('songSheet').open) songEditor.render();
+});
+
+function openHelp() {
+  $('helpSheet').showModal();
+  $('helpSheet').querySelector('form').scrollTop = 0;
+}
 
 function syncToggles() {
-  $('metroBtn').setAttribute('aria-pressed', settings.metronome);
-  $('liveBtn').setAttribute('aria-pressed', settings.liveMic);
   $('bpmVal').textContent = fmtBpm(settings.bpm);
   for (const b of document.querySelectorAll('.len-picker button')) {
     b.setAttribute('aria-checked', Number(b.dataset.bars) === settings.loopBars);
@@ -367,17 +373,15 @@ document.querySelector('.len-picker').addEventListener('click', (e) => {
 
 const checks = {
   setCountIn: 'countIn',
-  setClickRec: 'clickWhileRecording',
+  setBeeps: 'countInBeeps',
   setAutoPlay: 'autoPlay',
   setEcho: 'echoCancel',
-  setQuantShots: 'quantizeOneShots',
   setMonitor: 'monitor',
 };
 
 function openSettings() {
   $('bpmInput').value = settings.bpm;
   $('bpbInput').value = settings.beatsPerBar;
-  $('setQuantize').value = settings.quantize;
   $('latInput').value = settings.latencyMs ?? '';
   $('latInput').placeholder = engine.ctx ? `auto (${Math.round(engine.latency * 1000)})` : 'auto';
   for (const [id, key] of Object.entries(checks)) $(id).checked = settings[key];
@@ -393,7 +397,6 @@ function setBpm(v) {
   if (!Number.isFinite(v)) return;
   settings.bpm = Math.round(Math.min(240, Math.max(40, v)) * 10) / 10;
   $('bpmInput').value = settings.bpm;
-  if (engine.running) engine.startTransport(); // re-grid the metronome
   syncToggles();
   save();
 }
@@ -411,10 +414,6 @@ $('tapBtn').onpointerdown = () => {
 $('bpbInput').onchange = (e) => {
   settings.beatsPerBar = Number(e.target.value);
   syncToggles();
-  save();
-};
-$('setQuantize').onchange = (e) => {
-  settings.quantize = e.target.value;
   save();
 };
 for (const [id, key] of Object.entries(checks)) {
@@ -511,11 +510,10 @@ async function renderTakes() {
   for (const t of takes) {
     const li = document.createElement('li');
     const d = new Date(t.created);
-    const dur = `${Math.floor(t.duration / 60)}:${String(Math.round(t.duration % 60)).padStart(2, '0')}`;
-    li.innerHTML = `<button data-a="play" aria-label="Play">${playingId === t.id ? ICON.pause : ICON.play}</button>
-      <div class="meta"><b></b><small>${dur} · ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small></div>
-      <button data-a="share" aria-label="Share or save">${ICON.share}</button>
-      <button data-a="del" aria-label="Delete">${ICON.bin}</button>`;
+    li.innerHTML = `<button type="button" data-a="play" aria-label="Play">${playingId === t.id ? ICON.pause : ICON.play}</button>
+      <div class="meta"><b></b><small>${fmtTime(t.duration)} · ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small></div>
+      <button type="button" data-a="share" aria-label="Share or save">${ICON.share}</button>
+      <button type="button" data-a="del" aria-label="Delete">${ICON.bin}</button>`;
     li.querySelector('b').textContent = t.name;
     li.onclick = async (e) => {
       const a = e.target.closest('button')?.dataset.a;
@@ -549,15 +547,16 @@ async function renderTakes() {
 }
 
 async function shareTake(t) {
+  const name = `${t.name.replace(/\W+/g, '-')}.wav`;
   if (isNative) {
     try {
-      await shareFile(t.blob, `${t.name.replace(/\W+/g, '-')}.wav`, t.name);
+      await shareFile(t.blob, name, t.name);
     } catch (e) {
       if (!/cancel/i.test(e?.message || '')) toast('Couldn’t share that recording');
     }
     return;
   }
-  const file = new File([t.blob], `${t.name.replace(/\W+/g, '-')}.wav`, { type: 'audio/wav' });
+  const file = new File([t.blob], name, { type: 'audio/wav' });
   if (navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: t.name });
@@ -575,14 +574,46 @@ async function shareTake(t) {
 
 // ---------- render loop ----------
 
-function hintText() {
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+function hintText(t) {
   const pads = engine.pads;
-  if (pads.some((p) => p.state === 'armed')) return 'Counting in… start when the ring turns red. Tap the pad to cancel.';
-  const rec = pads.find((p) => p.state === 'recording');
-  if (rec) return 'Recording — ring turns white in the last bar. Tap to finish at the next bar instead.';
-  if (engine.session) return settings.liveMic ? 'Recording your jam with live mic' : 'Recording your jam — play the pads';
+  const armed = pads.find((p) => p.state === 'armed');
+  if (armed) {
+    const bars = Math.ceil((armed.rec.start - t) / engine.bar - 1e-3);
+    return bars > 1
+      ? `Waiting for the loops to come round — ${plural(bars, 'bar')} to go. Tap to cancel.`
+      : 'Counting in… start when the ring turns red. Tap the pad to cancel.';
+  }
+  if (pads.some((p) => p.state === 'recording')) return 'Recording — the ring turns white in the last bar. Tap to finish early.';
+  const sp = engine.songPosition(t);
+  if (sp) {
+    if (sp.index < 0) return `Song starts in ${sp.beatsToStart}…${engine.session ? ' get ready to sing' : ''}`;
+    return `Song · section ${sp.index + 1} of ${sp.total} · ${plural(sp.barsLeft, 'bar')} left${engine.session ? ' · recording' : ''}`;
+  }
+  if (engine.session) return 'Singing on top — tap the tile again to stop and save';
+  if (pads.some((p) => p.pending?.type === 'start')) return 'Coming in from the top when the loops come round';
   if (!pads.some((p) => p.hasSound)) return 'Tap an empty pad to record · tap to play · hold for options';
   return 'Tap to play · hold a pad for loop / one-shot, trim and more';
+}
+
+// Pitch for a pad's strip: from its pitch contour while it plays, or the mic while it records.
+const TRAIL = 12;
+function padPitch(pad, phase) {
+  if (pad.state === 'ready') {
+    const track = pad.pitchTrack;
+    if (!track || phase == null || !pad.pitchRange) return null;
+    const i = Math.floor(phase * track.length);
+    const trail = [];
+    for (let k = TRAIL; k > 0; k--) trail.push(track[(i - k + track.length) % track.length]);
+    return { now: track[i], trail, ...pad.pitchRange };
+  }
+  if (pad.state === 'recording' || pad.state === 'armed') {
+    const p = engine.pitches;
+    const range = pitchRange(p.subarray(p.length - 80)) ?? { lo: 50, hi: 70 };
+    return { now: p[p.length - 1], trail: Array.from(p.subarray(p.length - 1 - TRAIL, p.length - 1)), ...range };
+  }
+  return null;
 }
 
 let lastHint = '';
@@ -591,10 +622,12 @@ function frame() {
   const bpb = settings.beatsPerBar;
   const beat = engine.beat;
   const bar = engine.bar;
+  const armed = engine.pads.find((p) => p.state === 'armed');
 
   engine.pads.forEach((pad, i) => {
     const pe = padEls[i];
     const bars = pad.bars ?? settings.loopBars;
+    const phase = pad.state === 'ready' ? engine.playhead(pad) : null;
     const v = {
       state: pad.state,
       bpb,
@@ -604,12 +637,20 @@ function frame() {
       enabled: pad.enabled,
       pending: pad.pending?.type,
       time: t,
-      lengthLabel: `${settings.loopBars} bar${settings.loopBars === 1 ? '' : 's'}`,
-      phase: pad.state === 'ready' ? engine.playhead(pad) : null,
+      lengthLabel: plural(settings.loopBars, 'bar'),
+      phase,
+      pitch: padPitch(pad, phase),
     };
+    if (pad.pending?.type === 'start') {
+      const beats = Math.ceil((pad.pending.at - t) / beat - 1e-3);
+      v.pendingLabel = beats > bpb ? `in ${plural(Math.ceil(beats / bpb), 'bar')}` : beats > 0 ? `in ${beats}` : '';
+    }
     if (pad.rec && (pad.state === 'armed' || pad.state === 'recording' || pad.state === 'processing')) {
       const { start, end } = pad.rec;
-      v.countdown = Math.max(1, Math.ceil((start - t) / beat - 1e-3));
+      const beatsToGo = Math.max(1, Math.ceil((start - t) / beat - 1e-3));
+      // Count down in beats for the last bar, in bars before that.
+      v.countdown = beatsToGo > bpb ? Math.ceil(beatsToGo / bpb) : beatsToGo;
+      v.countLabel = beatsToGo > bpb ? 'bars to go' : 'get ready';
       v.recFrac = (t - start) / (end - start);
       v.lastBar = t >= end - bar;
       v.beatsLeft = Math.max(1, Math.ceil((end - t) / beat - 1e-3));
@@ -619,26 +660,37 @@ function frame() {
     if (pe.w) drawPad(pe.g, pe.w, pe.h, pad, v);
     const cl = pe.el.classList;
     cl.toggle('has-sound', pad.hasSound);
-    cl.toggle('active', v.phase != null);
+    cl.toggle('active', phase != null);
     cl.toggle('armed', pad.state === 'armed');
     cl.toggle('recording', pad.state === 'recording');
     cl.toggle('processing', pad.state === 'processing');
   });
 
-  // Beat lights.
+  // Beat lights: count towards a recording when one is waiting, otherwise follow the loops.
   const dots = $('beatDots').children;
-  const pos = engine.running ? (t - engine.origin) / beat : null;
-  const on = pos == null || pos < -1e-3 ? -1 : Math.floor(pos) % bpb;
+  const ref = armed ? armed.rec.start : engine.origin;
+  const pos = engine.running || armed ? (t - ref) / beat : null;
+  const on = pos == null ? -1 : mod(Math.floor(pos + 1e-3), bpb);
   const lit = pos != null && mod(pos, 1) < 0.5;
   for (let i = 0; i < dots.length; i++) dots[i].classList.toggle('on', i === on && lit);
-  $('beatDots').classList.toggle('count-in', engine.pads.some((p) => p.state === 'armed'));
+  $('beatDots').classList.toggle('count-in', !!armed);
 
   if (singView?.w) {
+    // Let the pitch view drift to follow your voice rather than jumping around.
+    const target = pitchRange(engine.pitches.subarray(engine.pitches.length - 100));
+    if (target) {
+      const mid = (target.lo + target.hi) / 2;
+      const span = Math.max(14, target.hi - target.lo);
+      singView.range.lo += (mid - span / 2 - singView.range.lo) * 0.04;
+      singView.range.hi += (mid + span / 2 - singView.range.hi) * 0.04;
+    }
     drawSing(singView.g, singView.w, singView.h, {
       recording: !!engine.session,
       live: settings.liveMic,
       micOpen: !!engine.mic,
       levels: engine.levels,
+      pitches: engine.pitches,
+      view: singView.range,
       elapsed: engine.session ? fmtTime((Date.now() - sessionStarted) / 1000) : '',
     });
     singView.el.classList.toggle('recording', !!engine.session);
@@ -646,29 +698,49 @@ function frame() {
 
   document.body.classList.toggle('playing', engine.running);
   document.body.classList.toggle('session', !!engine.session);
+  document.body.classList.toggle('song', !!engine.song);
+  $('songBtnLabel').textContent = engine.song ? '■ Stop' : 'Song';
 
-  const h = hintText();
+  const h = hintText(t);
   if (h !== lastHint) $('hint').textContent = lastHint = h;
   requestAnimationFrame(frame);
 }
 
-engine.addEventListener('recorded', () => save());
-engine.addEventListener('saved', () => save());
+for (const ev of ['recorded', 'saved']) engine.addEventListener(ev, save);
+window.addEventListener('pagehide', () => projects.flush());
+document.addEventListener('visibilitychange', () => document.hidden && projects.flush());
 
 // ---------- boot ----------
 
 buildPads();
-await load();
+await projects.boot();
+refreshTakesCount();
 syncToggles();
 sizeCanvases();
 requestAnimationFrame(frame);
 
-$('startBtn').onclick = async () => {
+// Welcome on first launch; after that, straight in.
+let welcomed = false;
+try {
+  welcomed = !!localStorage.getItem('welcomed');
+} catch {
+  /* storage blocked */
+}
+$('splash').hidden = welcomed;
+const dismissSplash = () => {
   $('splash').hidden = true;
-  await engine.init();
+  try {
+    localStorage.setItem('welcomed', '1');
+  } catch {
+    /* storage blocked */
+  }
+  engine.init();
 };
-if (sessionStorage.getItem('started')) $('splash').hidden = true;
-$('startBtn').addEventListener('click', () => sessionStorage.setItem('started', '1'));
+$('startBtn').onclick = dismissSplash;
+$('basicsBtn').onclick = () => {
+  dismissSplash();
+  openHelp();
+};
 // Phones only let audio start from a gesture; unlock on the first touch anywhere.
 document.addEventListener('pointerdown', () => engine.init(), { once: true, capture: true });
 
@@ -687,4 +759,4 @@ onBackButton(() => {
   return false;
 });
 
-window.loopsy = { engine, settings }; // handy for debugging
+window.loopsy = { engine, settings, projects, getSong: () => song, setSong: (s) => (song = s) }; // handy for debugging

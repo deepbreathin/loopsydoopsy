@@ -14,7 +14,7 @@
   </head>
   <body>
     <header class="topbar">
-      <button class="icon-btn" id="menuBtn" aria-label="Settings">
+      <button class="icon-btn" id="menuBtn" aria-label="Menu">
         <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
       </button>
 
@@ -26,19 +26,6 @@
       <button class="play-btn" id="playBtn" aria-label="Play">
         <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z" /></svg>
         <svg class="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
-      </button>
-
-      <button class="icon-btn toggle" id="metroBtn" aria-label="Metronome" aria-pressed="false">
-        <svg viewBox="0 0 24 24"><path d="M9 3h6l4 18H5zM12 15l5-9M8 15h8" /></svg>
-      </button>
-
-      <button class="rec-btn" id="recBtn" aria-label="Record performance">
-        <span class="rec-dot"></span><span class="rec-label" id="recLabel">Rec</span>
-      </button>
-
-      <button class="icon-btn toggle" id="liveBtn" aria-label="Live mic" aria-pressed="false">
-        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M6 11a6 6 0 0012 0M12 17v4" /></svg>
-        <span class="live-tag">LIVE</span>
       </button>
 
       <button class="icon-btn" id="takesBtn" aria-label="Recordings">
@@ -58,6 +45,7 @@
         <button data-bars="8">8</button>
         <span>bars</span>
       </div>
+      <button class="song-btn" id="songBtn" aria-label="Song">🎼 <span id="songBtnLabel">Song</span></button>
       <p class="hint" id="hint">Tap an empty pad to record · tap to play · hold for options</p>
     </footer>
 
@@ -125,8 +113,8 @@
         <p class="note" id="tempoLock" hidden>Tempo is locked while pads hold recordings so everything stays in time. Clear all pads to change it.</p>
 
         <h3>Recording</h3>
-        <label class="row check"><input type="checkbox" id="setCountIn" /> One-bar count-in before recording</label>
-        <label class="row check"><input type="checkbox" id="setClickRec" /> Click while recording a pad</label>
+        <label class="row check"><input type="checkbox" id="setCountIn" /> Count-in: a bar's countdown on the pad before recording starts</label>
+        <label class="row check"><input type="checkbox" id="setBeeps" /> Beep during the count-in (it stops before recording, so it isn't recorded)</label>
         <label class="row check"><input type="checkbox" id="setAutoPlay" /> Start looping as soon as a recording finishes</label>
         <label class="row">Mic boost <span class="val" id="boostVal">off</span>
           <input type="range" id="setBoost" min="1" max="4" step="0.05" />
@@ -134,14 +122,8 @@
         <p class="sub">Turn this up if humming or quiet singing looks small on the meter.</p>
         <label class="row check"><input type="checkbox" id="setEcho" /> Echo cancellation (helps with no headphones; can dull the sound)</label>
 
-        <h3>Playing</h3>
-        <label class="row">Loops start / stop on
-          <select id="setQuantize"><option value="bar">next bar</option><option value="beat">next beat</option><option value="off">immediately</option></select>
-        </label>
-        <label class="row check"><input type="checkbox" id="setQuantShots" /> One-shots snap to the grid too</label>
-
-        <h3>Live mode</h3>
-        <label class="row check"><input type="checkbox" id="setMonitor" /> Hear the mic through the app (headphones only!)</label>
+        <h3>Singing on top</h3>
+        <label class="row check"><input type="checkbox" id="setMonitor" /> Hear your voice through the app (headphones only!)</label>
 
         <h3>Latency</h3>
         <p class="sub">How late the mic hears things. Calibrate with the speaker on and headphones off.</p>
@@ -161,26 +143,132 @@
     <dialog class="sheet" id="takesSheet">
       <form method="dialog">
         <h2>Recordings</h2>
-        <p class="sub">Press <b>Rec</b> at the top to record what you play on the pads. Turn on <b>Live</b> to sing or play over the top as well.</p>
+        <p class="sub">Tap <b>Sing on top</b> to record the pads with your voice over them, or play a song from <b>🎼 Song</b>.</p>
         <ul class="takes" id="takesList"></ul>
         <button class="close" value="close">Done</button>
       </form>
     </dialog>
 
-    <!-- First-run start screen (audio needs a tap to unlock on phones) -->
+    <!-- Menu -->
+    <dialog class="sheet" id="menuSheet">
+      <form method="dialog">
+        <div class="menu">
+          <button type="button" data-open="projects">📁 Projects<small id="menuProject"></small></button>
+          <button type="button" data-open="song">🎼 Song<small>plan when each pad plays, then sing over it</small></button>
+          <button type="button" data-open="help">💡 Looping basics<small>bars, layers and leaving space</small></button>
+          <button type="button" data-open="settings">⚙︎ Tempo &amp; settings</button>
+        </div>
+        <button class="close" value="close">Done</button>
+      </form>
+    </dialog>
+
+    <!-- Projects -->
+    <dialog class="sheet" id="projectsSheet">
+      <form method="dialog">
+        <h2>Projects</h2>
+        <p class="sub">Everything saves as you go. Start a new project to keep this one safe, or open an old one.</p>
+        <label class="row">Name <input type="text" id="projectName" maxlength="40" autocomplete="off" /></label>
+        <div class="actions">
+          <button type="button" id="newProject">+ New project</button>
+          <button type="button" id="dupProject">Duplicate</button>
+        </div>
+        <h3>Your projects</h3>
+        <ul class="takes" id="projectList"></ul>
+        <button class="close" value="close">Done</button>
+      </form>
+    </dialog>
+
+    <!-- Song -->
+    <dialog class="sheet wide" id="songSheet">
+      <form method="dialog">
+        <h2>Song <small id="songInfo"></small></h2>
+        <p class="sub">Each row is a section of your song. Tap the dots to choose which pads play in it. Pads come in at the start of a section and drop out at the end, so you don't have to cue anything while you sing.</p>
+        <ol class="sections" id="sectionList"></ol>
+        <div class="actions">
+          <button type="button" id="addSection">+ Add section</button>
+          <button type="button" id="autoSong">✨ Build it up for me</button>
+        </div>
+        <div class="actions">
+          <button type="button" id="songPlay">▶ Play song</button>
+          <button type="button" id="songSing" class="primary">🎤 Play &amp; sing on top</button>
+        </div>
+        <button class="close" value="close">Done</button>
+      </form>
+    </dialog>
+
+    <!-- Looping basics -->
+    <dialog class="sheet wide" id="helpSheet">
+      <form method="dialog" class="help">
+        <h2>Looping basics</h2>
+
+        <section>
+          <h3>Beats, bars and loops</h3>
+          <p>A <b>beat</b> is one tap of your foot. A <b>bar</b> is a group of beats, usually four: <i>1-2-3-4</i>. A <b>loop</b> is a few bars that repeat forever. Here every loop is 1, 2, 4 or 8 bars long, so they always line up with each other.</p>
+        </section>
+
+        <section>
+          <h3>How long should a loop be?</h3>
+          <ul>
+            <li><b>1 bar</b> is a groove: a beatbox pattern, or a "dum-dum" bass you repeat.</li>
+            <li><b>2 bars</b> is a riff: a bassline or rhythm with a little call and answer.</li>
+            <li><b>4 bars</b> is the sweet spot: a chord pattern or a short tune. Most songs think in fours.</li>
+            <li><b>8 bars</b> is a whole phrase, like a verse melody. Lovely, but harder to nail in one go, so try 4 first.</li>
+          </ul>
+          <p>A good mix: one longer loop as the backbone, shorter loops for rhythm on top.</p>
+        </section>
+
+        <section>
+          <h3>Build it in layers</h3>
+          <ol>
+            <li><b>Bass:</b> a low hum or "bom… bom".</li>
+            <li><b>Rhythm:</b> mouth percussion, clicks, "ts" and "k" sounds.</li>
+            <li><b>Harmony:</b> long "oohs" and "aahs" that sit underneath.</li>
+            <li><b>A hook:</b> a short tune people would hum back.</li>
+            <li><b>Sing on top:</b> words, riffs, anything. This part doesn't loop, so it can wander.</li>
+          </ol>
+        </section>
+
+        <section>
+          <h3>Leave space</h3>
+          <p>Yes, space is your friend. Every layer adds up, so keep each one simple and leave gaps; a rest in one loop is room for another. Use different heights, low, middle and high: the <b>pitch strip</b> on the right of each pad shows where it sits, so spread them out. If it sounds muddy, take a loop out rather than adding another.</p>
+        </section>
+
+        <section>
+          <h3>Timing</h3>
+          <p>Come in right on the "1", when the ring turns red. The ring turns <b>white</b> for the last bar: that's your cue to finish your phrase and take a breath. Slightly early or late? Hold the pad and use <b>Trim</b>. Headphones stop the loops leaking into the mic.</p>
+        </section>
+
+        <section>
+          <h3>Make it a song</h3>
+          <p>Songs come from loops coming in and dropping out. Try: <i>one loop → build up → everything → drop to one or two → all back in → end on one</i>. <b>🎼 Song</b> lets you plan that, then play it hands-free while you sing on top.</p>
+        </section>
+
+        <section>
+          <h3>What's "eight-track"?</h3>
+          <p>Before computers, studios recorded onto tape machines with separate <b>tracks</b>. An 8-track could record eight parts separately, then mix them together. Your eight pads work the same way: eight separate parts you can bring in and out. (There was also the 1970s 8-track cartridge, a tape for car stereos.)</p>
+        </section>
+
+        <button class="close primary" value="close">Got it</button>
+      </form>
+    </dialog>
+
+    <!-- Welcome (first launch; audio also needs a tap to unlock on phones) -->
     <div class="splash" id="splash">
       <div class="logo">
         <span style="--c: var(--p0)"></span><span style="--c: var(--p1)"></span><span style="--c: var(--p2)"></span><span style="--c: var(--p3)"></span>
       </div>
       <h1>Loopsy Doopsy</h1>
+      <p class="lead">Hum, sing and stack your voice into songs.</p>
       <ol>
-        <li>Pick a tempo and a loop length.</li>
-        <li>Tap a pad and sing or hum. The ring counts you in, records exactly that many bars, then loops it.</li>
-        <li>Watch the ring: it turns <b>white</b> in the last bar so you know when to finish.</li>
-        <li>Build up a few layers, then tap <b>Sing on top</b> to record yourself over the lot.</li>
+        <li><b>Tap a pad</b> and hum or sing. It counts you in, records, then loops it.</li>
+        <li>The ring turns <b>white</b> in the last bar, so you know when to finish.</li>
+        <li>Stack a few layers, then tap <b>Sing on top</b>.</li>
       </ol>
-      <p class="tip">🎧 Headphones stop the loops and click leaking into your mic.</p>
-      <button class="primary big" id="startBtn">Let's loop</button>
+      <p class="tip">🎧 Headphones help: the loops won't leak into your mic.</p>
+      <div class="splash-actions">
+        <button class="primary big" id="startBtn">Let's loop</button>
+        <button class="ghost" id="basicsBtn">New to looping? Read the basics</button>
+      </div>
     </div>
 
     <script type="module" src="js/main.js"></script>

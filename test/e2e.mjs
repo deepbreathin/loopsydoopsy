@@ -1,4 +1,4 @@
-// End-to-end smoke test: real Chromium, fake microphone, phone-sized viewport.
+// End-to-end test: real Chromium, fake microphone, phone-sized viewport.
 // Run: npm run test:e2e   (needs Playwright; uses the globally installed one if present)
 import { createRequire } from 'node:module';
 import { spawn, execSync } from 'node:child_process';
@@ -29,141 +29,173 @@ try {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  const until = (fn, arg, timeout = 6000) => page.waitForFunction(fn, arg, { timeout });
+  const ev = (fn, arg) => page.evaluate(fn, arg);
+
   await page.goto(`http://localhost:${PORT}/`);
-  await page.screenshot({ path: shots + '0-splash.png' });
-  await page.click('#startBtn');
-  await page.evaluate(() => {
+  await page.screenshot({ path: shots + '0-welcome.png' });
+  await page.click('#basicsBtn');
+  await sleep(200);
+  await page.screenshot({ path: shots + '0b-basics.png' });
+  await page.click('#helpSheet .close');
+  await ev(() => {
     loopsy.settings.bpm = 160; // 1.5 s bars keep the test quick
     loopsy.settings.latencyMs = 30;
   });
   await page.click('.len-picker [data-bars="1"]');
   await page.screenshot({ path: shots + '1-empty.png' });
+  const pads = page.locator('.pad:not(.sing)');
 
-  const pads = page.locator('.pad');
-
-  // Record pad 1: count-in (1 bar) then 1 bar of recording.
+  // Record pad 1: silent count-in (no beeps scheduled) then one bar.
   await pads.nth(0).click();
-  await page.waitForFunction(() => loopsy.engine.pads[0].state === 'armed', null, { timeout: 3000 });
-  await sleep(700);
+  await until(() => loopsy.engine.pads[0].state === 'armed');
+  assert.equal(await ev(() => loopsy.engine.pads[0].rec.beeps.length), 0, 'count-in is silent by default');
+  await sleep(600);
   await page.screenshot({ path: shots + '2-countin.png' });
-  await page.waitForFunction(() => loopsy.engine.pads[0].state === 'recording', null, { timeout: 4000 });
-  await sleep(1200);
+  await until(() => loopsy.engine.pads[0].state === 'recording');
+  await sleep(1100);
   await page.screenshot({ path: shots + '3-recording-last-bar.png' });
-  await page.waitForFunction(() => loopsy.engine.pads[0].state === 'ready', null, { timeout: 5000 });
-  const info = await page.evaluate(() => {
+  await until(() => loopsy.engine.pads[0].state === 'ready');
+  const info = await ev(() => {
     const p = loopsy.engine.pads[0];
-    return { dur: p.buffer.duration, playing: !!p.source, enabled: p.enabled, peak: Math.max(...p.peaks) };
+    return { dur: p.buffer.duration, playing: !!p.source, enabled: p.enabled };
   });
   assert.ok(Math.abs(info.dur - 1.5) < 0.002, `loop is exactly one bar (${info.dur})`);
   assert.ok(info.playing && info.enabled, 'loop starts playing after recording');
-  await sleep(800);
-  await page.screenshot({ path: shots + '4-looping.png' });
 
-  // Record pad 2 while pad 1 loops; it must start on a bar line.
+  // Record a 2-bar loop on pad 2 while pad 1 plays: it must start at the top of pad 1's loop.
+  await page.click('.len-picker [data-bars="2"]');
   await pads.nth(1).click();
-  await page.waitForFunction(() => loopsy.engine.pads[1].rec, null, { timeout: 3000 });
-  const rec = await page.evaluate(() => {
-    const e = loopsy.engine;
-    const p = e.pads[1];
-    return ((p.rec.start - e.origin) / e.bar) % 1;
+  await until(() => loopsy.engine.pads[1].rec);
+  const syncErr = await ev(() => {
+    const [a, b] = loopsy.engine.pads;
+    const len = a.buffer.duration;
+    const ph = (((b.rec.start - a.playFrom) % len) + len) % len;
+    return Math.min(ph, len - ph);
   });
-  assert.ok(Math.min(rec, 1 - rec) < 1e-6, 'second recording starts on a bar line');
-  await page.waitForFunction(() => loopsy.engine.pads[1].state === 'ready', null, { timeout: 8000 });
-  await page.waitForFunction(() => !loopsy.engine.pads[1].rec, null, { timeout: 5000 }); // overrun tail captured
-  const raw = await page.evaluate(() => {
-    const p = loopsy.engine.pads[1];
-    return { raw: p.raw.length / p.sampleRate, start: p.trimStart / p.sampleRate };
-  });
-  assert.ok(raw.raw > 1.5 + raw.start + 1, 'raw capture keeps pre-roll and overrun for trimming');
+  assert.ok(syncErr < 1e-6, 'new recording starts when the playing loop comes round');
+  await until(() => loopsy.engine.pads[1].state === 'ready', null, 9000);
+  await until(() => loopsy.engine.pads[1].pitchTrack && !loopsy.engine.pads[1].rec, null, 6000);
+  await sleep(700);
+  await page.screenshot({ path: shots + '4-two-loops.png' });
 
-  // Long-press pad 2 → options → one-shot, then trim.
+  // Turn pad 2 off, then on again: it must restart from its beginning, on the top of the cycle.
+  await pads.nth(1).click();
+  await until(() => !loopsy.engine.pads[1].source, null, 4000);
+  await pads.nth(1).click();
+  const relaunch = await ev(() => {
+    const [a, b] = loopsy.engine.pads;
+    const len = a.buffer.duration;
+    const ph = (((b.loopStartAt - a.playFrom) % len) + len) % len;
+    return { fromTop: Math.abs(b.playFrom - b.loopStartAt), sync: Math.min(ph, len - ph) };
+  });
+  assert.ok(relaunch.fromTop < 1e-9, 'a loop always starts from its beginning');
+  assert.ok(relaunch.sync < 1e-6, 'and lines up with the loops already playing');
+
+  // Long-press pad 2 → options → trim.
   const box = await pads.nth(1).boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   await sleep(650);
   await page.mouse.up();
   assert.ok(await page.locator('#padSheet').evaluate((d) => d.open), 'long press opens pad options');
-  await page.screenshot({ path: shots + '5-pad-sheet.png' });
-  await page.click('#modeSeg [data-mode="oneshot"]');
   await page.click('#padTrim');
   await sleep(300);
-  // Drag the trim window a bit to the right.
   const cb = await page.locator('#trimCanvas').boundingBox();
   await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
   await page.mouse.down();
   await page.mouse.move(cb.x + cb.width / 2 + 30, cb.y + cb.height / 2, { steps: 5 });
   await page.mouse.up();
-  const moved = await page.evaluate(() => loopsy.engine.pads[1].trimStart - loopsy.engine.pads[1].defaultStart);
-  assert.ok(moved > 0, 'dragging the window right moves the loop start later');
-  await page.screenshot({ path: shots + '6-trim.png' });
+  assert.ok((await ev(() => loopsy.engine.pads[1].trimStart - loopsy.engine.pads[1].defaultStart)) > 0, 'trim window moves');
+  await page.screenshot({ path: shots + '5-trim.png' });
   await page.click('#trimSheet .primary');
-
-  // Session recording.
-  await page.click('#recBtn');
-  await sleep(1500);
-  await pads.nth(1).click(); // one-shot fires on touch-down
-  await sleep(1500);
-  await page.screenshot({ path: shots + '7-session.png' });
-  await page.click('#recBtn');
-  await page.waitForFunction(() => document.getElementById('takesCount').textContent === '1', null, { timeout: 4000 });
-  await page.click('#takesBtn');
-  await sleep(200);
-  await page.screenshot({ path: shots + '8-takes.png' });
-  await page.click('#takesSheet .close');
 
   // Sing on top: one tap records pads + voice, second tap saves.
   await page.click('.pad.sing');
-  await page.waitForFunction(() => loopsy.engine.session && loopsy.settings.liveMic, null, { timeout: 3000 });
+  await until(() => loopsy.engine.session && loopsy.settings.liveMic, null, 3000);
   await sleep(1500);
-  await page.screenshot({ path: shots + '7b-singing.png' });
+  await page.screenshot({ path: shots + '6-singing.png' });
   await page.click('.pad.sing');
-  await page.waitForFunction(() => document.getElementById('takesCount').textContent === '2', null, { timeout: 4000 });
-  assert.equal(await page.evaluate(() => loopsy.settings.liveMic), false, 'Sing turns Live back off');
+  await until(() => document.getElementById('takesCount').textContent === '1', null, 4000);
+  assert.equal(await ev(() => loopsy.settings.liveMic), false, 'Sing turns the mic back off');
 
-  // Reload: pads come back from IndexedDB.
+  // Song: the editor builds an arrangement; "Play & sing" plays it hands-free and saves a take.
+  await page.click('#playBtn'); // stop
+  await page.click('#songBtn');
+  await sleep(200);
+  assert.ok((await ev(() => loopsy.getSong().sections.length)) >= 3, 'song is built up automatically');
+  await page.screenshot({ path: shots + '7-song.png' });
+  await ev(() =>
+    loopsy.setSong({
+      sections: [
+        { bars: 1, pads: [true, false, false, false, false, false, false, false] },
+        { bars: 2, pads: [true, true, false, false, false, false, false, false] },
+        { bars: 1, pads: [false, true, false, false, false, false, false, false] },
+      ],
+    }),
+  );
+  await page.click('#songSing');
+  await until(() => loopsy.engine.song && loopsy.engine.session);
+  await until(() => loopsy.engine.songPosition()?.index === 1, null, 6000);
+  await sleep(300);
+  const sec2 = await ev(() => loopsy.engine.pads.slice(0, 2).map((p) => !!p.source && p.enabled));
+  assert.deepEqual(sec2, [true, true], 'section 2 plays pads 1 and 2');
+  await page.screenshot({ path: shots + '8-song-playing.png' });
+  await until(() => loopsy.engine.songPosition()?.index === 2, null, 6000);
+  await sleep(300);
+  assert.equal(await ev(() => loopsy.engine.pads[0].enabled), false, 'pad 1 drops out in section 3');
+  await until(() => !loopsy.engine.song, null, 6000);
+  await until(() => document.getElementById('takesCount').textContent === '2', null, 4000);
+
+  // Projects: start a new one (empty), then go back to the first (pads return).
+  await page.click('#menuBtn');
+  await page.click('#menuSheet [data-open="projects"]');
+  await sleep(200);
+  await page.click('#newProject');
+  await until(() => !loopsy.engine.pads[0].raw);
+  await page.fill('#projectName', 'Second idea');
+  await sleep(600);
+  await page.screenshot({ path: shots + '9-projects.png' });
+  await page.locator('#projectList li', { hasText: 'My loops' }).locator('[data-a="open"]').click();
+  await until(() => loopsy.engine.pads[0].raw && loopsy.projects.current.name === 'My loops');
+  assert.ok(await ev(() => loopsy.getSong()?.sections.length === 3), 'song comes back with its project');
+  await page.click('#projectsSheet .close');
+
+  // Reload: same project, pads restored from storage, no welcome screen the second time.
   await page.reload();
   await page.click('body');
-  await page.waitForFunction(() => loopsy.engine.pads[1].hasSound, null, { timeout: 4000 });
-  assert.equal(await page.evaluate(() => loopsy.engine.pads[1].mode), 'oneshot');
+  await until(() => loopsy.engine.pads[1].hasSound, null, 4000);
+  assert.ok(await page.locator('#splash').evaluate((e) => e.hidden), 'welcome only shows once');
 
-  const layoutKind = () => page.evaluate(() => document.getElementById('grid').dataset.layout);
-
-  // Landscape phone.
-  await page.setViewportSize({ width: 844, height: 390 });
-  await sleep(300);
-  assert.equal(await layoutKind(), '4x2');
-  await page.screenshot({ path: shots + '9-landscape.png' });
-
-  // OnePlus Open cover screen, then unfolded inner screen (landscape and portrait).
-  await page.setViewportSize({ width: 372, height: 828 });
-  await sleep(300);
-  assert.equal(await layoutKind(), '2x4');
-  await page.screenshot({ path: shots + '10-cover-screen.png' });
-  await page.setViewportSize({ width: 930, height: 864 });
-  await sleep(300);
-  assert.equal(await layoutKind(), '3x3');
-  await page.screenshot({ path: shots + '11-unfolded.png' });
-  await page.setViewportSize({ width: 864, height: 930 });
-  await sleep(300);
-  assert.equal(await layoutKind(), '3x3');
-  await page.screenshot({ path: shots + '12-unfolded-portrait.png' });
+  const layoutKind = () => ev(() => document.getElementById('grid').dataset.layout);
+  for (const [w, h, kind, name] of [
+    [844, 390, '4x2', '10-landscape'],
+    [372, 828, '2x4', '11-cover-screen'],
+    [930, 864, '3x3', '12-unfolded'],
+    [864, 930, '3x3', '13-unfolded-portrait'],
+  ]) {
+    await page.setViewportSize({ width: w, height: h });
+    await sleep(300);
+    assert.equal(await layoutKind(), kind, name);
+    await page.screenshot({ path: shots + name + '.png' });
+  }
 
   // Half-open like a book: pretend the browser reports two side-by-side segments.
   await page.setViewportSize({ width: 930, height: 864 });
-  await page.evaluate(() => {
+  await ev(() => {
     window.viewport = { segments: [new DOMRect(0, 0, 465, 864), new DOMRect(465, 0, 465, 864)] };
     window.dispatchEvent(new Event('resize'));
   });
   await sleep(300);
   assert.equal(await layoutKind(), 'hinge');
-  const clear = await page.evaluate(() =>
+  const clear = await ev(() =>
     [...document.querySelectorAll('.pad')].every((el) => {
       const r = el.getBoundingClientRect();
       return r.right <= 465 || r.left >= 465;
     }),
   );
   assert.ok(clear, 'no pad straddles the fold');
-  await page.screenshot({ path: shots + '13-book-posture.png' });
+  await page.screenshot({ path: shots + '14-book-posture.png' });
 
   assert.deepEqual(errors, []);
   console.log('e2e ok — screenshots in test/screens/');

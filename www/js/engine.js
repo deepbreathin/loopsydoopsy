@@ -1,20 +1,10 @@
-import {
-  barDur,
-  beatDur,
-  findOnset,
-  loopOffset,
-  median,
-  mod,
-  nextBoundary,
-  peaks,
-  phaseAt,
-  recordStartTime,
-  renderLoop,
-} from './timing.js';
+import { barDur, beatDur, findOnset, median, nextBoundary, peaks, phaseAt, renderLoop } from './timing.js';
+import { blockPitch, pitchRange, pitchTrack } from './pitch.js';
 
 export const PAD_COUNT = 8;
 export const PEAK_BINS = 180;
-const LOOKAHEAD = 0.12; // seconds of metronome clicks scheduled ahead
+const SONG_AHEAD = 0.3; // seconds ahead that song section changes are scheduled
+export const LOOP_LENGTHS = [1, 2, 4, 8]; // bars; powers of two so every loop lines up
 const KEEP_SECONDS = 45; // how much mic history to keep for pre-roll / tails
 const EDGE_FADE = 0.004; // seconds faded at loop seams
 
@@ -35,11 +25,11 @@ class Pad {
     this.sampleRate = 0;
     this.trimStart = 0; // samples into raw where the loop starts
     this.lengthSamples = 0;
-    this.gridBar = 0; // bar number (mod 840, divisible by 1..8) the take started on
-    this.anchorBars = 0; // which bar of the loop's own cycle sample 0 lands on
     this.defaultStart = 0; // trimStart as captured, for "Reset" in the trim editor
     this.buffer = null;
     this.peaks = null;
+    this.pitchTrack = null; // MIDI note per ~40 ms of the loop (NaN = no clear pitch)
+    this.pitchRange = null;
     this.livePeaks = null;
     this.rec = null;
     this.enabled = false; // loop is switched on (plays whenever the transport runs)
@@ -65,9 +55,9 @@ export class Engine extends EventTarget {
     this.micUntil = 0; // last captured frame (exclusive)
     this.inputLevel = 0;
     this.levels = new Float32Array(160); // recent mic loudness, newest last (one per ~43 ms)
+    this.pitches = new Float32Array(160).fill(NaN); // recent mic pitch, same clock as levels
     this.session = null;
-    this.nextClick = 0;
-    this.clickIndex = 0;
+    this.song = null;
   }
 
   emit(type, detail) {
@@ -214,6 +204,8 @@ export class Engine extends EventTarget {
     this.inputLevel = Math.max(rms, this.inputLevel * 0.8);
     this.levels.copyWithin(0, 1);
     this.levels[this.levels.length - 1] = rms;
+    this.pitches.copyWithin(0, 1);
+    this.pitches[this.pitches.length - 1] = blockPitch(samples, this.ctx.sampleRate);
     // Feed the live waveform of any pad that is recording.
     const sr = this.ctx.sampleRate;
     const lat = this.latency;
@@ -244,75 +236,151 @@ export class Engine extends EventTarget {
   }
 
   // ---------- transport ----------
+  //
+  // Every loop is 1, 2, 4 or 8 bars and its first sample sits on the grid that starts at
+  // `origin`. Loops always start from their beginning, at the moment the loops already
+  // playing come back round to theirs, so everything stays lined up as recorded.
 
-  // `origin` is where bar 1 lands; enabled loops join from `startAt` (which may be later).
+  // `origin` is where bar 1 lands; enabled loops start (from their beginning) at `startAt`.
   startTransport(origin = this.now + 0.06, startAt = origin) {
     this.origin = origin;
     this.running = true;
-    this.nextClick = origin;
-    this.clickIndex = 0;
     for (const pad of this.pads) {
-      if (pad.enabled && pad.hasSound && pad.mode === 'loop') this.startLoopAt(pad, Math.max(startAt, this.now + 0.02));
+      if (pad.enabled && pad.hasSound && pad.mode === 'loop') {
+        const at = Math.max(startAt, this.now + 0.02);
+        this.startLoopAt(pad, at, phaseAt(at, origin, pad.buffer.duration));
+      }
     }
     this.emit('transport');
   }
 
   stopTransport() {
     this.running = false;
+    this.song = null;
     for (const pad of this.pads) {
       this.stopSource(pad, this.now);
       pad.pending = null;
       if (pad.state === 'armed' || pad.state === 'recording') this.cancelRecording(pad);
     }
     this.emit('transport');
+    this.emit('song');
   }
 
-  // Bar:beat position for the display.
-  position() {
-    if (!this.running) return null;
-    const t = this.heardTime - this.origin;
-    if (t < 0) return { bar: 0, beat: Math.floor(t / this.beat), countIn: true };
-    const beats = Math.floor(t / this.beat);
-    return { bar: Math.floor(beats / this.settings.beatsPerBar) + 1, beat: (beats % this.settings.beatsPerBar) + 1, frac: mod(t, this.beat) / this.beat };
+  // Loops that are playing (or about to), other than `except`.
+  sounding(except) {
+    return this.pads.filter((p) => p !== except && p.enabled && p.source && p.mode === 'loop');
   }
 
-  quantizedTime() {
-    const now = this.now + 0.03;
-    const q = this.settings.quantize;
-    if (!this.running || q === 'off') return now;
-    return nextBoundary(now, this.origin, q === 'beat' ? this.beat : this.bar);
+  // Length in bars of the longest loop playing: the cycle new things line up with.
+  cycleBars(playing = this.sounding()) {
+    return Math.max(0, ...playing.map((p) => p.bars || 1));
   }
-
-  // ---------- metronome / scheduler ----------
 
   tick() {
     if (!this.ctx) return;
     const now = this.now;
-    if (this.running) {
-      const counting = this.pads.some((p) => p.state === 'armed');
-      const recording = this.pads.some((p) => p.state === 'recording');
-      while (this.nextClick < now + LOOKAHEAD) {
-        if (this.nextClick >= now - 0.01 && (this.settings.metronome || counting || (recording && this.settings.clickWhileRecording))) {
-          this.click(this.nextClick, this.clickIndex % this.settings.beatsPerBar === 0, counting);
-        }
-        this.clickIndex++;
-        this.nextClick = this.origin + this.clickIndex * this.beat;
-      }
-    }
+    if (this.song) this.songTick(now);
     for (const pad of this.pads) this.updatePad(pad, now);
   }
 
-  click(when, accent, loud) {
+  // ---------- song mode ----------
+  //
+  // A song is a list of sections, each a number of bars and which pads play in it. It
+  // plays hands-free: pads come in from the top and drop out exactly on section changes.
+
+  playSong(sections, { countIn = this.settings.countIn } = {}) {
+    if (!sections.length) return;
+    this.stopTransport();
+    for (const p of this.pads) p.enabled = false;
+    const start = this.now + 0.15 + (countIn ? this.bar : 0);
+    const times = [];
+    let t = start;
+    for (const sec of sections) {
+      times.push(t);
+      t += sec.bars * this.bar;
+    }
+    this.startTransport(start);
+    this.song = { sections, times, start, end: t, index: -1 };
+    this.emit('song');
+  }
+
+  songTick(now) {
+    const song = this.song;
+    const next = song.index + 1;
+    if (next < song.sections.length && now >= song.times[next] - SONG_AHEAD) {
+      const at = song.times[next];
+      const sec = song.sections[next];
+      for (const pad of this.pads) {
+        const want = !!sec.pads[pad.index] && pad.hasSound && pad.mode === 'loop';
+        if (want && !(pad.enabled && pad.source)) {
+          pad.enabled = true;
+          this.startLoopAt(pad, at);
+          pad.pending = { type: 'start', at };
+        } else if (!want && pad.enabled) {
+          pad.enabled = false;
+          this.stopSource(pad, at);
+          pad.pending = { type: 'stop', at };
+        }
+      }
+      song.index = next;
+      this.emit('song');
+    } else if (next === song.sections.length && now >= song.end - SONG_AHEAD && !song.ending) {
+      song.ending = true;
+      for (const pad of this.pads) {
+        pad.enabled = false;
+        this.stopSource(pad, song.end);
+      }
+    } else if (song.ending && now >= song.end + 0.05) {
+      this.song = null;
+      this.running = false;
+      this.emit('transport');
+      this.emit('song');
+      this.emit('songend');
+    }
+  }
+
+  // Where the song is, for the display: section index (-1 while counting in) and bars left.
+  songPosition(t = this.heardTime) {
+    const song = this.song;
+    if (!song) return null;
+    let i = -1;
+    while (i + 1 < song.times.length && t >= song.times[i + 1]) i++;
+    const nextT = i + 1 < song.times.length ? song.times[i + 1] : song.end;
+    return {
+      index: i,
+      total: song.sections.length,
+      barsLeft: Math.ceil((nextT - t) / this.bar - 1e-3),
+      beatsToStart: Math.ceil((song.start - t) / this.beat - 1e-3),
+    };
+  }
+
+  // ---------- count-in ----------
+
+  beep(when, accent) {
     const ctx = this.ctx;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     osc.frequency.value = accent ? 1760 : 1175;
     g.gain.setValueAtTime(0, when);
-    g.gain.linearRampToValueAtTime(loud ? 1 : 0.6, when + 0.002);
+    g.gain.linearRampToValueAtTime(0.8, when + 0.002);
     g.gain.exponentialRampToValueAtTime(0.001, when + 0.05);
     osc.connect(g).connect(this.clickBus);
     osc.start(when);
     osc.stop(when + 0.06);
+    return osc;
+  }
+
+  // Optional beeps for the bar before a recording. Never on the downbeat itself, so
+  // nothing ends up in the take.
+  countInBeeps(start) {
+    if (!this.settings.countInBeeps) return [];
+    const bpb = this.settings.beatsPerBar;
+    const out = [];
+    for (let i = bpb; i >= 1; i--) {
+      const t = start - i * this.beat;
+      if (t > this.now + 0.01) out.push(this.beep(t, i === bpb));
+    }
+    return out;
   }
 
   // ---------- recording ----------
@@ -321,48 +389,64 @@ export class Engine extends EventTarget {
     await this.ensureMic();
     const bar = this.bar;
     const bars = this.settings.loopBars;
+    const now = this.now;
+    this.stopSource(pad, now);
+    const lead = this.settings.countIn ? bar : 0;
+    const playing = this.sounding(pad);
     let start;
     if (!this.running) {
-      const origin = this.now + 0.1;
-      this.startTransport(origin);
-      start = origin + (this.settings.countIn ? bar : 0);
+      // Count in, then record; any loops switched on come in with you, from the top.
+      start = now + 0.1 + lead;
+      this.startTransport(start);
+    } else if (!playing.length) {
+      start = now + 0.1 + lead;
+      this.origin = start;
     } else {
-      start = recordStartTime(this.now, this.origin, bar, this.settings.countIn ? this.beat : 0.05);
+      // Wait for the loops to come back round to their beginning.
+      const cycle = this.cycleBars(playing) * bar;
+      start = nextBoundary(now + Math.max(0.1, Math.min(lead, cycle) / 2), this.origin, cycle);
     }
-    this.stopSource(pad, this.now);
     pad.reset();
     pad.bars = bars;
     pad.state = 'armed';
-    pad.rec = { start, end: start + bars * bar, plannedEnd: start + bars * bar };
-    pad.gridBar = mod(Math.round((start - this.origin) / bar), 840);
-    pad.anchorBars = pad.gridBar % bars;
+    pad.rec = { start, end: start + bars * bar, plannedEnd: start + bars * bar, beeps: this.countInBeeps(start) };
     pad.livePeaks = new Float32Array(PEAK_BINS);
     this.emit('change', pad);
   }
 
-  // Tap while recording: finish at the next bar line (shortens the loop to whole bars).
+  // Tap while recording: finish early, at the next 1 / 2 / 4 bar mark so it still lines up.
   finishEarly(pad) {
     if (pad.state !== 'recording') return;
-    const end = Math.max(pad.rec.start + this.bar, nextBoundary(this.now + 0.05, pad.rec.start, this.bar));
-    if (end >= pad.rec.end) return;
+    const elapsed = this.now + 0.05 - pad.rec.start;
+    const bars = LOOP_LENGTHS.find((b) => b < pad.bars && b * this.bar >= elapsed);
+    if (!bars) return;
+    const end = pad.rec.start + bars * this.bar;
     // Squash the live waveform so the circle now represents the shorter loop.
     const ratio = (end - pad.rec.start) / (pad.rec.plannedEnd - pad.rec.start);
     const old = pad.livePeaks;
     pad.livePeaks = old.map((_, b) => old[Math.min(old.length - 1, Math.floor(b * ratio))]);
     pad.rec.end = end;
     pad.rec.plannedEnd = end;
-    pad.bars = Math.round((end - pad.rec.start) / this.bar);
-    pad.anchorBars = pad.gridBar % pad.bars;
+    pad.bars = bars;
     this.emit('change', pad);
   }
 
   cancelRecording(pad) {
+    for (const b of pad.rec?.beeps ?? []) {
+      try {
+        b.stop();
+      } catch {
+        /* already played */
+      }
+    }
     pad.reset();
     this.emit('change', pad);
   }
 
   updatePad(pad, now) {
     if (pad.state === 'armed' && now >= pad.rec.start) {
+      // A new longest loop becomes the grid everything else lines up with.
+      if (pad.bars >= this.cycleBars(this.sounding(pad))) this.origin = pad.rec.start;
       pad.state = 'recording';
       this.emit('change', pad);
     }
@@ -407,8 +491,9 @@ export class Engine extends EventTarget {
       pad.livePeaks = null;
       if (this.settings.autoPlay) {
         pad.enabled = true;
-        // Join the loop already in progress, locked to the grid.
-        if (this.running) this.startLoopAt(pad, this.now + 0.02);
+        // The loop's second time round began when recording ended; join it there.
+        const at = this.now + 0.02;
+        if (this.running) this.startLoopAt(pad, at, phaseAt(at, end, pad.buffer.duration));
       }
       this.emit('change', pad);
       this.emit('recorded', pad);
@@ -439,6 +524,12 @@ export class Engine extends EventTarget {
     let max = 0.05;
     for (const v of p) max = Math.max(max, v);
     pad.peaks = p.map((v) => v / max);
+    // Pitch contour for the pitch strip; a little heavier, so off the critical path.
+    clearTimeout(pad.pitchTimer);
+    pad.pitchTimer = setTimeout(() => {
+      pad.pitchTrack = pitchTrack(data, sr);
+      pad.pitchRange = pitchRange(pad.pitchTrack);
+    }, 30);
     if (pad.state === 'empty') pad.state = 'ready';
   }
 
@@ -447,8 +538,9 @@ export class Engine extends EventTarget {
     this.rebuild(pad);
     if (pad.source && pad.mode === 'loop' && this.running) {
       const at = nextBoundary(this.now + 0.03, this.origin, this.bar);
+      const offset = phaseAt(at, pad.playFrom, pad.buffer.duration);
       this.stopSource(pad, at);
-      this.startLoopAt(pad, at);
+      this.startLoopAt(pad, at, offset);
     }
     this.emit('change', pad);
   }
@@ -463,7 +555,6 @@ export class Engine extends EventTarget {
       pad.free = false;
       pad.bars = len;
       pad.lengthSamples = Math.round(len * this.bar * pad.sampleRate);
-      pad.anchorBars = pad.gridBar % len;
     }
   }
 
@@ -481,18 +572,26 @@ export class Engine extends EventTarget {
         pad.pending = null;
         this.stopSource(pad, now);
       } else {
-        const at = this.quantizedTime();
+        const at = nextBoundary(now + 0.03, this.origin, this.bar);
         this.stopSource(pad, at);
         pad.pending = { type: 'stop', at };
       }
     } else {
       pad.enabled = true;
+      const playing = this.sounding(pad);
+      const busy = this.pads.some((p) => p.state === 'armed' || p.state === 'recording');
       if (!this.running) {
-        // Start the transport so this loop's first sample lands on "now".
-        const when = now + 0.04;
-        this.startTransport(when - pad.anchorBars * this.bar, when);
+        this.startTransport(now + 0.04);
+      } else if (!playing.length && !busy) {
+        // Nothing else playing: start right away, from the top.
+        const at = now + 0.04;
+        this.origin = at;
+        this.startLoopAt(pad, at);
       } else {
-        const at = this.quantizedTime();
+        // Come in from the top when the other loops next come round.
+        const cycle = this.cycleBars(playing) || pad.bars;
+        const at = nextBoundary(now + 0.03, this.origin, Math.min(pad.bars, cycle) * this.bar);
+        if (pad.bars > cycle) this.origin = at; // a new longest loop: the grid restarts with it
         this.startLoopAt(pad, at);
         if (at > now + 0.05) pad.pending = { type: 'start', at };
       }
@@ -500,16 +599,14 @@ export class Engine extends EventTarget {
     this.emit('change', pad);
   }
 
-  startLoopAt(pad, when) {
+  // Start a loop at `when`, `offset` seconds into it (0 = from the beginning).
+  startLoopAt(pad, when, offset = 0) {
     if (!pad.buffer) return;
     if (pad.source) this.stopSource(pad, when);
     const src = this.ctx.createBufferSource();
     src.buffer = pad.buffer;
     src.loop = true;
     src.connect(pad.gain);
-    const len = pad.buffer.duration;
-    const anchor = pad.anchorBars * this.bar;
-    const offset = loopOffset(when, this.origin, anchor, len);
     src.start(when, offset);
     pad.source = src;
     pad.playFrom = when - offset;
@@ -522,11 +619,10 @@ export class Engine extends EventTarget {
     const src = this.ctx.createBufferSource();
     src.buffer = pad.buffer;
     src.connect(pad.gain);
-    const when = this.settings.quantizeOneShots && this.running ? this.quantizedTime() : now;
-    src.start(when);
+    src.start(now);
     pad.source = src;
-    pad.playFrom = when;
-    pad.oneshotEnd = when + pad.buffer.duration;
+    pad.playFrom = now;
+    pad.oneshotEnd = now + pad.buffer.duration;
     this.emit('change', pad);
   }
 
@@ -592,8 +688,6 @@ export class Engine extends EventTarget {
       sampleRate: pad.sampleRate,
       trimStart: pad.trimStart,
       lengthSamples: pad.lengthSamples,
-      anchorBars: pad.anchorBars,
-      gridBar: pad.gridBar,
       defaultStart: pad.defaultStart,
     };
   }
@@ -601,7 +695,8 @@ export class Engine extends EventTarget {
   restore(pad, s) {
     this.stopSource(pad, this.now);
     pad.reset();
-    Object.assign(pad, s);
+    const { anchorBars, gridBar, ...rest } = s; // fields from older saves
+    Object.assign(pad, rest);
     if (pad.gain) pad.gain.gain.value = pad.volume;
     if (pad.raw) {
       pad.state = 'ready';

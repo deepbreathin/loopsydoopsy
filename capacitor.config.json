@@ -1,0 +1,9 @@
+{
+  "appId": "app.loopsydoopsy",
+  "appName": "Loopsy Doopsy",
+  "webDir": "www",
+  "backgroundColor": "#1c1b22",
+  "android": {
+    "allowMixedContent": false
+  }
+}

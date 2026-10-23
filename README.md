@@ -2,22 +2,42 @@
 
 A colourful loop recorder for your phone. There are eight pads. Tap one and it counts you in, records for exactly the number of bars you chose, then starts looping in time with everything else. Each pad shows its sound as a **circular waveform**, with a playhead sweeping round it, so you can always see where the loop starts and how long it is.
 
-<img src="docs/screenshot.png" width="300" alt="Loopsy Doopsy on a phone: eight coloured pads, two with circular waveforms">
+<img src="docs/screenshot.png" height="420" alt="Loopsy Doopsy on a phone: eight coloured pads, two with circular waveforms"> <img src="docs/unfolded.png" height="420" alt="Unfolded on a OnePlus Open: a 3×3 grid with the Sing tile as the ninth square">
 
-It's an installable web app (PWA). It works in mobile Safari and Chrome, can be added to the home screen, works offline, and needs no build step.
+It's built for singing and humming: record a few vocal loops, then tap **Sing on top** to record yourself over the lot.
 
-## Run it
+It's an **Android app** (built with [Capacitor](https://capacitorjs.com)), and it's laid out for foldables like the **OnePlus Open**: 2×4 pads on the cover screen, a 3×3 grid of large pads when unfolded, and pads kept clear of the fold when half-open. The same code also runs in a browser.
+
+## Install on Android
+
+Every push to GitHub builds an APK:
+
+1. Open the repo on GitHub → **Actions** → **Android APK** → the latest run → download **loopsy-doopsy-apk** (a zip with `app-debug.apk` inside).
+2. Open the APK on your phone and allow installing from that source when asked.
+3. Allow the microphone the first time you record.
+
+New builds install over the old one and keep your pads and recordings: they're all signed with the same key, `android/app/loopsy-debug.keystore`.
+
+To build it yourself, you need Node 22, JDK 21 and the Android SDK (or Android Studio):
 
 ```sh
-npm start              # serves on http://localhost:5173
+npm ci
+npm run android:build      # → android/app/build/outputs/apk/debug/app-debug.apk
+npx cap open android       # or open it in Android Studio and press Run
 ```
 
-Browsers only allow the microphone on **https** or `localhost`. To try it on a phone, host the folder on any static https host (GitHub Pages, Netlify, Cloudflare Pages), or tunnel your dev server. Then "Add to Home Screen" for a full-screen app.
+## Develop
+
+The app is plain HTML/CSS/JS in `www/`, with no build step.
 
 ```sh
-npm test               # unit tests for the timing / DSP maths
-npm run test:e2e       # headless Chromium with a fake mic; screenshots land in test/screens/
+npm start              # browser version on http://localhost:5173
+npm test               # unit tests: timing / DSP maths and the screen layouts
+npm run test:e2e       # headless Chromium with a fake mic at phone, cover-screen and unfolded sizes
+npm run android:sync   # copy www/ into the Android project after changing it
 ```
+
+Browsers only allow the microphone on **https** or `localhost`. The Android app doesn't have that limitation.
 
 ## How it plays
 
@@ -31,8 +51,8 @@ npm run test:e2e       # headless Chromium with a fake mic; screenshots land in 
 | **Hold** a pad | Options: Loop / One-shot, volume, **Trim**, re-record, clear (with undo). |
 | **▶ / ■** | Starts or stops the transport. Loops you've switched on resume together. |
 | **Next loop: 1 · 2 · 4 · 8 bars** | Sets the length of the next recording. |
-| **Rec** (top bar) | Records your performance: whatever you play on the pads. |
-| **Live** (mic) | Adds your voice over the top of a **Rec** take, so you can lay down the backing on the pads and then riff live without being boxed into loops. |
+| **Sing on top** (the white tile) | One tap: starts the loops you've switched on and records them **plus your voice**. Tap again to stop and save. Its meter shows your mic level, so you can see quiet humming is getting through. |
+| **Rec** (top bar) | Records the pads only. Turn on **Live** as well to add your voice, which is what Sing on top does in one tap. |
 | **♫** | Your recorded jams: play them, share or save them as WAV, delete them (with undo). |
 | **Tempo** (tap the bpm) | BPM, tap tempo, time signature, count-in, quantise, latency calibration and the rest of the settings. |
 
@@ -56,13 +76,30 @@ The **circular waveform** comes from the app in the reference screenshot. A loop
 3. **Get-ready and wrap-up cues.** There's a count-in on the pad itself, beat lights in the top bar, a red progress ring while recording, and a white ring with a countdown for the last bar.
 4. **Forgiving capture.** Pre-roll and overrun are recorded too, so small timing mistakes can be fixed in Trim instead of re-recorded.
 5. **Latency compensation.** Phones add delay between the speaker and the mic. Without compensation every overdub drifts late, which loopers like Loopy Pro and Ableton have to deal with as well ([Loopy Pro request](https://roadmap.loopypro.com/feature-requests/p/latency-adjustmentcustom-track-offset-parameter), [Cycling '74 thread](https://cycling74.com/forums/time-accuracy-and-latency-compensation)). Loopsy Doopsy estimates the delay automatically, and **Settings → Calibrate** measures it properly: it plays clicks through the speaker and listens for them. Live-mic takes are shifted back by the same amount, so your riffing lines up with the pads in the saved file.
-6. **Colourful, but readable.** The eight pads have distinct bright colours with dark ink on top. Empty pads are dimmed, pads with a sound are at full colour, and pads that are playing glow.
+6. **Made for voice.** **Mic boost** (Settings) adds up to +12 dB for quiet humming. A limiter on the output stops stacked vocal loops from distorting. The mic's own processing (noise suppression, auto-gain) is switched off so loops keep their natural dynamics.
+7. **Foldables.** The layout picks whichever arrangement gives the biggest pads on the current screen:
+
+   | Screen | Layout |
+   | --- | --- |
+   | Cover screen / phone | 2×4 pads and a Sing strip |
+   | Landscape phone | 4×2 pads and a Sing strip |
+   | Unfolded (near-square) | 3×3 grid, with Sing as the ninth tile |
+   | Half-open like a book | Four pads either side of the fold (when Chrome reports the hinge through the viewport-segments API) |
+
+   Folding or unfolding doesn't restart the app, so a loop keeps playing across the change.
+8. **Colourful, but readable.** The eight pads have distinct bright colours with dark ink on top. Empty pads are dimmed, pads with a sound are at full colour, and pads that are playing glow.
+
+On Android the screen stays on while the app is open, the volume buttons control the music, and Back closes whatever sheet is open (or sends the app to the background, so it doesn't quit mid-jam).
 
 **Headphones help a lot.** Without them, the mic picks up the loops coming out of the speaker. "Echo cancellation" in Settings reduces that, but it dulls the sound. Only turn on "Hear the mic through the app" when you're wearing headphones.
 
 ## Code map
 
 ```
+www/                  the app (everything below lives in here)
+android/              Capacitor Android project (MainActivity keeps the screen on, volume keys → music)
+.github/workflows/    builds the APK on every push
+
 index.html            layout + sheets (pad options, trim, settings, recordings)
 css/style.css         styles; portrait 2×4 grid, landscape 4×2
 js/main.js            UI wiring, gestures, persistence, render loop
@@ -71,6 +108,8 @@ js/capture-worklet.js AudioWorklet that taps audio with frame-accurate timestamp
 js/pad-view.js        canvas drawing of the circular pads
 js/trim.js            trim editor
 js/timing.js          pure maths (grid, loop cutting, peaks, onset detection, tap tempo) — unit-tested
+js/layout.js          picks the pad grid for the screen / fold — unit-tested
+js/native.js          Android bridges: back button, share sheet
 js/storage.js         IndexedDB: pads + settings survive reloads; recorded takes
 js/wav.js             WAV encoder
 sw.js                 offline cache

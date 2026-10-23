@@ -14,7 +14,7 @@ try {
 }
 
 const PORT = 5199;
-const server = spawn('python3', ['-m', 'http.server', String(PORT)], { stdio: 'ignore' });
+const server = spawn('python3', ['-m', 'http.server', String(PORT), '-d', new URL('../www/', import.meta.url).pathname], { stdio: 'ignore' });
 const shots = new URL('./screens/', import.meta.url).pathname;
 mkdirSync(shots, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -111,16 +111,59 @@ try {
   await page.screenshot({ path: shots + '8-takes.png' });
   await page.click('#takesSheet .close');
 
+  // Sing on top: one tap records pads + voice, second tap saves.
+  await page.click('.pad.sing');
+  await page.waitForFunction(() => loopsy.engine.session && loopsy.settings.liveMic, null, { timeout: 3000 });
+  await sleep(1500);
+  await page.screenshot({ path: shots + '7b-singing.png' });
+  await page.click('.pad.sing');
+  await page.waitForFunction(() => document.getElementById('takesCount').textContent === '2', null, { timeout: 4000 });
+  assert.equal(await page.evaluate(() => loopsy.settings.liveMic), false, 'Sing turns Live back off');
+
   // Reload: pads come back from IndexedDB.
   await page.reload();
   await page.click('body');
   await page.waitForFunction(() => loopsy.engine.pads[1].hasSound, null, { timeout: 4000 });
   assert.equal(await page.evaluate(() => loopsy.engine.pads[1].mode), 'oneshot');
 
-  // Landscape layout.
+  const layoutKind = () => page.evaluate(() => document.getElementById('grid').dataset.layout);
+
+  // Landscape phone.
   await page.setViewportSize({ width: 844, height: 390 });
   await sleep(300);
+  assert.equal(await layoutKind(), '4x2');
   await page.screenshot({ path: shots + '9-landscape.png' });
+
+  // OnePlus Open cover screen, then unfolded inner screen (landscape and portrait).
+  await page.setViewportSize({ width: 372, height: 828 });
+  await sleep(300);
+  assert.equal(await layoutKind(), '2x4');
+  await page.screenshot({ path: shots + '10-cover-screen.png' });
+  await page.setViewportSize({ width: 930, height: 864 });
+  await sleep(300);
+  assert.equal(await layoutKind(), '3x3');
+  await page.screenshot({ path: shots + '11-unfolded.png' });
+  await page.setViewportSize({ width: 864, height: 930 });
+  await sleep(300);
+  assert.equal(await layoutKind(), '3x3');
+  await page.screenshot({ path: shots + '12-unfolded-portrait.png' });
+
+  // Half-open like a book: pretend the browser reports two side-by-side segments.
+  await page.setViewportSize({ width: 930, height: 864 });
+  await page.evaluate(() => {
+    window.viewport = { segments: [new DOMRect(0, 0, 465, 864), new DOMRect(465, 0, 465, 864)] };
+    window.dispatchEvent(new Event('resize'));
+  });
+  await sleep(300);
+  assert.equal(await layoutKind(), 'hinge');
+  const clear = await page.evaluate(() =>
+    [...document.querySelectorAll('.pad')].every((el) => {
+      const r = el.getBoundingClientRect();
+      return r.right <= 465 || r.left >= 465;
+    }),
+  );
+  assert.ok(clear, 'no pad straddles the fold');
+  await page.screenshot({ path: shots + '13-book-posture.png' });
 
   assert.deepEqual(errors, []);
   console.log('e2e ok — screenshots in test/screens/');

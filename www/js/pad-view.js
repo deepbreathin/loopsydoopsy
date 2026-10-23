@@ -198,3 +198,54 @@ function drawMic(g, x, y, s, color) {
   g.lineTo(x, y + s * 0.9);
   g.stroke();
 }
+
+// The Sing tile: tap to record the pads with your voice on top. Shows a scrolling meter of
+// the mic so you can see quiet humming is getting through. Lays out as a wide strip on
+// phones and as a square on the unfolded screen.
+export function drawSing(g, w, h, v) {
+  g.clearRect(0, 0, w, h);
+  const strip = w > h * 2.2;
+  const ink = v.recording ? '#fff' : 'rgba(20,14,30,0.78)';
+  const soft = v.recording ? 'rgba(255,255,255,0.75)' : 'rgba(20,14,30,0.5)';
+  const title = v.recording ? `Recording ${v.elapsed}` : 'Sing on top';
+  const sub = v.recording ? 'tap to stop & save' : 'records the pads + your voice';
+
+  let meter;
+  if (strip) {
+    const s = Math.min(h * 0.32, 22);
+    drawMic(g, h * 0.55, h / 2 + s * 0.1, s, ink);
+    g.textAlign = 'left';
+    g.textBaseline = 'middle';
+    g.fillStyle = ink;
+    g.font = `800 ${Math.round(h * 0.27)}px system-ui, -apple-system, sans-serif`;
+    g.fillText(title, h * 1.05, h * 0.38);
+    g.fillStyle = soft;
+    g.font = `600 ${Math.round(h * 0.19)}px system-ui, -apple-system, sans-serif`;
+    g.fillText(sub, h * 1.05, h * 0.68);
+    const left = Math.max(h * 1.05 + 190, w * 0.45);
+    meter = { x: left, y: h * 0.2, w: w - left - h * 0.3, h: h * 0.6 };
+  } else {
+    const R = Math.min(w, h);
+    drawMic(g, w / 2, h * 0.28, R * 0.1, ink);
+    label(g, w / 2, h * 0.68, R * 0.085, ink, title, true);
+    label(g, w / 2, h * 0.79, R * 0.055, soft, sub);
+    meter = { x: w * 0.12, y: h * 0.42, w: w * 0.76, h: h * 0.16 };
+  }
+  if (meter.w < 30) return;
+
+  // Level meter: newest on the right. Bars are in dB so quiet humming still shows.
+  const n = v.levels.length;
+  const bars = Math.max(8, Math.min(n, Math.floor(meter.w / 5)));
+  const bw = meter.w / bars;
+  const mid = meter.y + meter.h / 2;
+  for (let i = 0; i < bars; i++) {
+    const lv = v.micOpen ? v.levels[n - bars + i] : 0;
+    const db = 20 * Math.log10(lv + 1e-6);
+    const f = Math.max(0.04, Math.min(1, (db + 60) / 54));
+    const bh = f * meter.h;
+    g.fillStyle = !v.micOpen ? soft : db > -3 ? '#ff2d46' : v.recording ? '#fff' : v.live ? '#1f9d4f' : ink;
+    g.globalAlpha = v.micOpen ? 0.9 : 0.35;
+    g.fillRect(meter.x + i * bw + bw * 0.15, mid - bh / 2, Math.max(1, bw * 0.7), bh);
+  }
+  g.globalAlpha = 1;
+}

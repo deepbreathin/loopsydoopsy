@@ -64,6 +64,7 @@ export class Engine extends EventTarget {
     this.micChunks = [];
     this.micUntil = 0; // last captured frame (exclusive)
     this.inputLevel = 0;
+    this.levels = new Float32Array(160); // recent mic loudness, newest last (one per ~43 ms)
     this.session = null;
     this.nextClick = 0;
     this.clickIndex = 0;
@@ -112,7 +113,14 @@ export class Engine extends EventTarget {
     ctx.resume();
     await ctx.audioWorklet.addModule(new URL('./capture-worklet.js', import.meta.url));
     this.master = ctx.createGain();
-    this.master.connect(ctx.destination);
+    // Stacking several vocal loops easily goes over full scale; a fast limiter keeps it clean.
+    this.limiter = ctx.createDynamicsCompressor();
+    this.limiter.threshold.value = -3;
+    this.limiter.knee.value = 0;
+    this.limiter.ratio.value = 20;
+    this.limiter.attack.value = 0.002;
+    this.limiter.release.value = 0.12;
+    this.master.connect(this.limiter).connect(ctx.destination);
     this.clickBus = ctx.createGain();
     this.clickBus.gain.value = 0.5;
     this.clickBus.connect(ctx.destination);
@@ -143,6 +151,10 @@ export class Engine extends EventTarget {
     });
     const ctx = this.ctx;
     const src = ctx.createMediaStreamSource(stream);
+    // Mic boost: humming is quiet, so allow up to +12 dB before anything is captured.
+    const boost = ctx.createGain();
+    boost.gain.value = this.settings.micBoost ?? 1;
+    src.connect(boost);
     const node = new AudioWorkletNode(ctx, 'capture', {
       numberOfInputs: 1,
       numberOfOutputs: 1,
@@ -151,17 +163,17 @@ export class Engine extends EventTarget {
       processorOptions: { channels: 1 },
     });
     node.port.onmessage = (e) => this.onMicChunk(e.data);
-    src.connect(node);
+    boost.connect(node);
     node.connect(this.sink);
     // Live vocals: mic -> live gain -> (session recorder, optional monitor)
     const live = ctx.createGain();
     live.gain.value = this.settings.liveMic ? 1 : 0;
-    src.connect(live);
+    boost.connect(live);
     const monitor = ctx.createGain();
     monitor.gain.value = this.settings.monitor ? 1 : 0;
     live.connect(monitor);
     monitor.connect(ctx.destination);
-    this.mic = { stream, track: stream.getAudioTracks()[0], src, node, live, monitor };
+    this.mic = { stream, track: stream.getAudioTracks()[0], src, boost, node, live, monitor };
     if (this.session) live.connect(this.session.merger, 0, 1);
     return this.mic;
   }
@@ -172,6 +184,7 @@ export class Engine extends EventTarget {
     this.mic = null;
     m.stream.getTracks().forEach((t) => t.stop());
     m.src.disconnect();
+    m.boost.disconnect();
     m.node.disconnect();
     m.live.disconnect();
     m.monitor.disconnect();
@@ -184,6 +197,7 @@ export class Engine extends EventTarget {
     const t = this.now;
     this.mic.live.gain.setTargetAtTime(this.settings.liveMic ? 1 : 0, t, 0.01);
     this.mic.monitor.gain.setTargetAtTime(this.settings.monitor ? 1 : 0, t, 0.01);
+    this.mic.boost.gain.setTargetAtTime(this.settings.micBoost ?? 1, t, 0.01);
   }
 
   onMicChunk({ frame, data }) {
@@ -198,6 +212,8 @@ export class Engine extends EventTarget {
     for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
     const rms = Math.sqrt(sum / samples.length);
     this.inputLevel = Math.max(rms, this.inputLevel * 0.8);
+    this.levels.copyWithin(0, 1);
+    this.levels[this.levels.length - 1] = rms;
     // Feed the live waveform of any pad that is recording.
     const sr = this.ctx.sampleRate;
     const lat = this.latency;
@@ -615,7 +631,7 @@ export class Engine extends EventTarget {
     });
     const chunks = [];
     node.port.onmessage = (e) => chunks.push(e.data);
-    this.master.connect(merger, 0, 0);
+    this.limiter.connect(merger, 0, 0);
     if (this.mic) this.mic.live.connect(merger, 0, 1);
     merger.connect(node);
     node.connect(this.sink);
@@ -631,7 +647,7 @@ export class Engine extends EventTarget {
     await new Promise((r) => setTimeout(r, 120 + s.latency * 1000)); // let the last batches land
     s.node.port.postMessage({ type: 'active', value: false });
     try {
-      this.master.disconnect(s.merger);
+      this.limiter.disconnect(s.merger);
     } catch {
       /* not connected */
     }

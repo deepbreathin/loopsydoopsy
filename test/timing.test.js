@@ -10,7 +10,7 @@ import {
   recordStartTime,
   renderLoop,
   tapTempo,
-} from '../js/timing.js';
+} from '../www/js/timing.js';
 
 const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
 

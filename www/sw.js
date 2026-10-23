@@ -1,5 +1,5 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
-const CACHE = 'loopsy-v1';
+const CACHE = 'loopsy-v2';
 const SHELL = [
   './',
   'index.html',
@@ -12,6 +12,9 @@ const SHELL = [
   'js/storage.js',
   'js/wav.js',
   'js/capture-worklet.js',
+  'js/layout.js',
+  'js/native.js',
+  'vendor/capacitor-core.js',
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',

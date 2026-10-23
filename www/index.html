@@ -128,6 +128,10 @@
         <label class="row check"><input type="checkbox" id="setCountIn" /> One-bar count-in before recording</label>
         <label class="row check"><input type="checkbox" id="setClickRec" /> Click while recording a pad</label>
         <label class="row check"><input type="checkbox" id="setAutoPlay" /> Start looping as soon as a recording finishes</label>
+        <label class="row">Mic boost <span class="val" id="boostVal">off</span>
+          <input type="range" id="setBoost" min="1" max="4" step="0.05" />
+        </label>
+        <p class="sub">Turn this up if humming or quiet singing looks small on the meter.</p>
         <label class="row check"><input type="checkbox" id="setEcho" /> Echo cancellation (helps with no headphones; can dull the sound)</label>
 
         <h3>Playing</h3>
@@ -171,9 +175,11 @@
       <h1>Loopsy Doopsy</h1>
       <ol>
         <li>Pick a tempo and a loop length.</li>
-        <li>Tap a pad. The ring counts you in, records for exactly that many bars, then starts looping.</li>
+        <li>Tap a pad and sing or hum. The ring counts you in, records exactly that many bars, then loops it.</li>
         <li>Watch the ring: it turns <b>white</b> in the last bar so you know when to finish.</li>
+        <li>Build up a few layers, then tap <b>Sing on top</b> to record yourself over the lot.</li>
       </ol>
+      <p class="tip">🎧 Headphones stop the loops and click leaking into your mic.</p>
       <button class="primary big" id="startBtn">Let's loop</button>
     </div>
 

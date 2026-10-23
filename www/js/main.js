@@ -1,5 +1,7 @@
 import { Engine, PAD_COUNT } from './engine.js';
-import { drawPad } from './pad-view.js';
+import { drawPad, drawSing } from './pad-view.js';
+import * as layout from './layout.js';
+import { isNative, onBackButton, shareFile } from './native.js';
 import { TrimEditor } from './trim.js';
 import * as store from './storage.js';
 import { encodeWav } from './wav.js';
@@ -21,6 +23,7 @@ const DEFAULTS = {
   echoCancel: false,
   monitor: false,
   liveMic: false,
+  micBoost: 1,
 };
 
 const settings = { ...DEFAULTS };
@@ -87,12 +90,28 @@ function buildPads() {
     padEls.push({ el, canvas, g: canvas.getContext('2d'), w: 0, h: 0 });
     bindPad(el, engine.pads[i]);
   }
-  new ResizeObserver(sizeCanvases).observe(grid);
+  // The Sing tile: one tap records the pads plus your voice on top.
+  const el = document.createElement('button');
+  el.className = 'pad sing';
+  el.setAttribute('aria-label', 'Sing on top');
+  el.innerHTML = '<canvas></canvas>';
+  grid.append(el);
+  const canvas = el.querySelector('canvas');
+  singView = { el, canvas, g: canvas.getContext('2d'), w: 0, h: 0 };
+  el.addEventListener('click', toggleSing);
+  const relayout = () => {
+    layout.apply(grid, [...padEls.map((p) => p.el), el]);
+    sizeCanvases();
+  };
+  new ResizeObserver(relayout).observe(grid);
+  window.addEventListener('resize', relayout); // also fires when a foldable changes posture
 }
+
+let singView;
 
 function sizeCanvases() {
   const dpr = window.devicePixelRatio || 1;
-  for (const p of padEls) {
+  for (const p of [...padEls, singView]) {
     const r = p.el.getBoundingClientRect();
     p.w = r.width;
     p.h = r.height;
@@ -254,40 +273,67 @@ $('liveBtn').onclick = async () => {
 };
 
 let sessionTimer;
-$('recBtn').onclick = async () => {
-  if (engine.session) {
-    clearInterval(sessionTimer);
-    $('recLabel').textContent = 'Rec';
-    const result = await engine.stopSession();
-    if (!result || result.samples.length < result.sampleRate * 0.3) return toast('Recording too short');
-    const blob = encodeWav(result.samples, result.sampleRate);
-    const takes = await store.listTakes();
-    const take = {
-      id: Date.now(),
-      name: `Jam ${takes.length + 1}`,
-      created: Date.now(),
-      duration: result.samples.length / result.sampleRate,
-      blob,
-    };
-    await store.saveTake(take);
-    refreshTakesCount();
-    toast(`Saved “${take.name}”`, 'Open', openTakes);
-  } else {
-    try {
-      await engine.startSession();
-    } catch (e) {
-      return micError(e);
-    }
-    const t0 = Date.now();
-    const tickLabel = () => {
-      const s = Math.floor((Date.now() - t0) / 1000);
-      $('recLabel').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-    };
-    tickLabel();
-    sessionTimer = setInterval(tickLabel, 500);
-    if (!settings.liveMic) toast('Recording the pads — turn on Live to add your voice');
+let sessionStarted = 0;
+let singOwnsLive = false; // the Sing tile switched Live on, so it switches it off again
+
+function setLive(on) {
+  settings.liveMic = on;
+  syncToggles();
+  engine.applyLiveSettings();
+}
+
+async function startJam({ withVoice }) {
+  if (withVoice && !settings.liveMic) {
+    singOwnsLive = true;
+    setLive(true);
   }
-};
+  try {
+    if (settings.liveMic) await engine.ensureMic();
+    engine.applyLiveSettings();
+    await engine.startSession();
+  } catch (e) {
+    if (singOwnsLive) setLive((singOwnsLive = false));
+    return micError(e);
+  }
+  // Singing on top: bring the backing in if it's switched on but stopped.
+  if (withVoice && !engine.running && engine.pads.some((p) => p.enabled && p.hasSound && p.mode === 'loop')) {
+    engine.startTransport();
+  }
+  sessionStarted = Date.now();
+  const tickLabel = () => ($('recLabel').textContent = fmtTime((Date.now() - sessionStarted) / 1000));
+  tickLabel();
+  sessionTimer = setInterval(tickLabel, 500);
+  if (!settings.liveMic) toast('Recording the pads — turn on Live to add your voice');
+}
+
+const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+
+function toggleSing() {
+  if (engine.session) stopJam();
+  else startJam({ withVoice: true });
+}
+
+$('recBtn').onclick = () => (engine.session ? stopJam() : startJam({ withVoice: false }));
+
+async function stopJam() {
+  clearInterval(sessionTimer);
+  $('recLabel').textContent = 'Rec';
+  const result = await engine.stopSession();
+  if (singOwnsLive) setLive((singOwnsLive = false));
+  if (!result || result.samples.length < result.sampleRate * 0.3) return toast('Recording too short');
+  const blob = encodeWav(result.samples, result.sampleRate);
+  const takes = await store.listTakes();
+  const take = {
+    id: Date.now(),
+    name: `Jam ${takes.length + 1}`,
+    created: Date.now(),
+    duration: result.samples.length / result.sampleRate,
+    blob,
+  };
+  await store.saveTake(take);
+  refreshTakesCount();
+  toast(`Saved “${take.name}”`, 'Open', openTakes);
+}
 
 $('tempoBtn').onclick = () => openSettings();
 $('menuBtn').onclick = () => openSettings();
@@ -335,6 +381,8 @@ function openSettings() {
   $('latInput').value = settings.latencyMs ?? '';
   $('latInput').placeholder = engine.ctx ? `auto (${Math.round(engine.latency * 1000)})` : 'auto';
   for (const [id, key] of Object.entries(checks)) $(id).checked = settings[key];
+  $('setBoost').value = settings.micBoost;
+  showBoost();
   const locked = engine.anyRecorded();
   for (const id of ['bpmInput', 'bpmDown', 'bpmUp', 'tapBtn', 'bpbInput']) $(id).disabled = locked;
   $('tempoLock').hidden = !locked;
@@ -377,6 +425,16 @@ for (const [id, key] of Object.entries(checks)) {
     save();
   };
 }
+function showBoost() {
+  const db = Math.round(20 * Math.log10(settings.micBoost));
+  $('boostVal').textContent = db ? `+${db} dB` : 'off';
+}
+$('setBoost').oninput = (e) => {
+  settings.micBoost = Number(e.target.value);
+  showBoost();
+  engine.applyLiveSettings();
+  save();
+};
 $('latInput').onchange = (e) => {
   const v = e.target.value.trim();
   settings.latencyMs = v === '' ? null : Math.max(0, Math.min(500, Number(v)));
@@ -491,6 +549,14 @@ async function renderTakes() {
 }
 
 async function shareTake(t) {
+  if (isNative) {
+    try {
+      await shareFile(t.blob, `${t.name.replace(/\W+/g, '-')}.wav`, t.name);
+    } catch (e) {
+      if (!/cancel/i.test(e?.message || '')) toast('Couldn’t share that recording');
+    }
+    return;
+  }
   const file = new File([t.blob], `${t.name.replace(/\W+/g, '-')}.wav`, { type: 'audio/wav' });
   if (navigator.canShare?.({ files: [file] })) {
     try {
@@ -567,6 +633,17 @@ function frame() {
   for (let i = 0; i < dots.length; i++) dots[i].classList.toggle('on', i === on && lit);
   $('beatDots').classList.toggle('count-in', engine.pads.some((p) => p.state === 'armed'));
 
+  if (singView?.w) {
+    drawSing(singView.g, singView.w, singView.h, {
+      recording: !!engine.session,
+      live: settings.liveMic,
+      micOpen: !!engine.mic,
+      levels: engine.levels,
+      elapsed: engine.session ? fmtTime((Date.now() - sessionStarted) / 1000) : '',
+    });
+    singView.el.classList.toggle('recording', !!engine.session);
+  }
+
   document.body.classList.toggle('playing', engine.running);
   document.body.classList.toggle('session', !!engine.session);
 
@@ -595,8 +672,19 @@ $('startBtn').addEventListener('click', () => sessionStorage.setItem('started', 
 // Phones only let audio start from a gesture; unlock on the first touch anywhere.
 document.addEventListener('pointerdown', () => engine.init(), { once: true, capture: true });
 
-if ('serviceWorker' in navigator && location.protocol === 'https:') {
+// Offline cache for the web version; the Android app already ships its files.
+if (!isNative && 'serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
+
+onBackButton(() => {
+  const open = [...document.querySelectorAll('dialog[open]')].at(-1);
+  if (open) {
+    if (open.id === 'trimSheet') $('trimCancel').click();
+    else open.close();
+    return true;
+  }
+  return false;
+});
 
 window.loopsy = { engine, settings }; // handy for debugging

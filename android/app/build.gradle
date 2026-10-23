@@ -7,8 +7,10 @@ android {
         applicationId "app.loopsydoopsy"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // CI stamps each build with its run number so Obtainium and Android see it as newer.
+        def build = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+        versionCode build
+        versionName "1.0.${build}"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

@@ -7,6 +7,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
 
@@ -34,3 +36,15 @@ jobs:
         with:
           name: loopsy-doopsy-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      # Each push to the default branch becomes a GitHub Release with the APK attached;
+      # Obtainium on the phone watches these releases and offers the update.
+      - name: Publish release
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v1.0.${GITHUB_RUN_NUMBER}"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "loopsy-doopsy-${tag}.apk"
+          gh release create "$tag" "loopsy-doopsy-${tag}.apk" --target "$GITHUB_SHA" \
+            --title "Loopsy Doopsy ${tag}" --notes "$(git log -1 --pretty=%s)"

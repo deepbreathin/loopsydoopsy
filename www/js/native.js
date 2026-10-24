@@ -24,8 +24,13 @@ const toBase64 = (blob) =>
     r.readAsDataURL(blob);
   });
 
-// Opens Android's share sheet (WhatsApp, Drive, Files, …) for a recording.
-export async function shareFile(blob, name, title) {
-  const { uri } = await Filesystem.writeFile({ path: name, data: await toBase64(blob), directory: 'CACHE' });
-  await Share.share({ title, files: [uri], dialogTitle: 'Share recording' });
+// Opens Android's share sheet (WhatsApp, Drive, Files, …) for one or more files.
+export async function shareFiles(files, title) {
+  const uris = [];
+  for (const { blob, name } of files) {
+    const { uri } = await Filesystem.writeFile({ path: name, data: await toBase64(blob), directory: 'CACHE' });
+    uris.push(uri);
+  }
+  await Share.share({ title, files: uris, dialogTitle: title });
 }
+

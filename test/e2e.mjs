@@ -119,6 +119,27 @@ try {
   await until(() => document.getElementById('takesCount').textContent === '1', null, 4000);
   assert.equal(await ev(() => loopsy.settings.liveMic), false, 'Sing turns the mic back off');
 
+  // Rec: records just the pads — the mic stays out of it.
+  await page.click('#recBtn');
+  await until(() => loopsy.engine.session);
+  assert.equal(await ev(() => loopsy.settings.liveMic), false, 'Rec leaves the mic out');
+  await sleep(1200);
+  await page.screenshot({ path: shots + '6b-rec-pads.png' });
+  // Tapping Sing mid-take adds the voice from then on.
+  await page.click('.pad.sing');
+  await until(() => loopsy.settings.liveMic);
+  await sleep(500);
+  await page.click('#recBtn');
+  await until(() => document.getElementById('takesCount').textContent === '2', null, 4000);
+  assert.ok(await ev(async () => (await (await import('./js/storage.js')).listTakes()).some((t) => t.name.endsWith('(with voice)'))));
+  await page.click('#recBtn');
+  await until(() => loopsy.engine.session);
+  await sleep(800);
+  await page.click('#recBtn');
+  await until(() => document.getElementById('takesCount').textContent === '3', null, 4000);
+  const names = await ev(async () => (await (await import('./js/storage.js')).listTakes()).map((t) => t.name));
+  assert.ok(names.some((n) => !n.includes('voice')), 'a pads-only take');
+
   // Song: the editor builds an arrangement; "Play & sing" plays it hands-free and saves a take.
   await page.click('#playBtn'); // stop
   await page.click('#songBtn');
@@ -134,7 +155,7 @@ try {
       ],
     }),
   );
-  await page.click('#songSing');
+  await page.click('#songSing'); // record & sing
   await until(() => loopsy.engine.song && loopsy.engine.session);
   await until(() => loopsy.engine.songPosition()?.index === 1, null, 6000);
   await sleep(300);
@@ -145,20 +166,53 @@ try {
   await sleep(300);
   assert.equal(await ev(() => loopsy.engine.pads[0].enabled), false, 'pad 1 drops out in section 3');
   await until(() => !loopsy.engine.song, null, 6000);
-  await until(() => document.getElementById('takesCount').textContent === '2', null, 4000);
+  await until(() => document.getElementById('takesCount').textContent === '4', null, 4000);
 
-  // Projects: start a new one (empty), then go back to the first (pads return).
-  await page.click('#menuBtn');
-  await page.click('#menuSheet [data-open="projects"]');
+  // New soundboard: save this one under a name, start fresh.
+  await page.click('#newBoardBtn');
   await sleep(200);
-  await page.click('#newProject');
-  await until(() => !loopsy.engine.pads[0].raw);
-  await page.fill('#projectName', 'Second idea');
-  await sleep(600);
-  await page.screenshot({ path: shots + '9-projects.png' });
-  await page.locator('#projectList li', { hasText: 'My loops' }).locator('[data-a="open"]').click();
-  await until(() => loopsy.engine.pads[0].raw && loopsy.projects.current.name === 'My loops');
-  assert.ok(await ev(() => loopsy.getSong()?.sections.length === 3), 'song comes back with its project');
+  await page.screenshot({ path: shots + '9-new-ask.png' });
+  await page.click('#newSave');
+  await page.fill('#newName', 'Humming ideas');
+  await page.screenshot({ path: shots + '9b-new-name.png' });
+  await page.click('#newNameSave');
+  await until(() => !loopsy.engine.pads[0].raw && loopsy.projects.current.name !== 'Humming ideas');
+  assert.match(await page.locator('#boardNameText').textContent(), /Soundboard/);
+
+  // Record something in the new board, then "Don't save" it — and undo that.
+  await pads.nth(3).click();
+  await until(() => loopsy.engine.pads[3].state === 'ready', null, 9000);
+  await page.click('#playBtn');
+  const throwaway = await ev(() => loopsy.projects.current.name);
+  await page.click('#newBoardBtn');
+  await page.click('#newDiscard');
+  await until(() => !loopsy.engine.pads[3].raw);
+  await page.click('#toastAction'); // Undo
+  await until((name) => loopsy.engine.pads[3].raw && loopsy.projects.current.name === name, throwaway);
+  const empties = await ev(async () => (await (await import('./js/storage.js')).listProjects()).filter((p) => !p.padCount).length);
+  assert.equal(empties, 0, 'no empty soundboards left behind');
+
+  // Soundboards: back up "Humming ideas" to a file and open it again as a copy.
+  await page.click('#boardName');
+  await sleep(200);
+  await page.locator('#projectList li', { hasText: 'Humming ideas' }).locator('[data-a="open"]').click();
+  await until(() => loopsy.engine.pads[0].raw && loopsy.projects.current.name === 'Humming ideas');
+  assert.ok(await ev(() => loopsy.getSong()?.sections.length === 3), 'song comes back with its soundboard');
+  await page.screenshot({ path: shots + '9c-soundboards.png' });
+  const wavs = [];
+  page.on('download', (d) => wavs.push(d.suggestedFilename()));
+  await page.click('#exportWavs');
+  await until(() => true);
+  await sleep(500);
+  assert.deepEqual(wavs.sort(), ['Humming-ideas-pad1.wav', 'Humming-ideas-pad2.wav'], 'each sound saves as a WAV');
+  const [backup] = await Promise.all([page.waitForEvent('download'), page.click('#exportBoard')]);
+  const backupPath = shots + 'backup.loopsy';
+  await backup.saveAs(backupPath);
+  await page.setInputFiles('#importFile', backupPath);
+  const boards = () => ev(async () => (await (await import('./js/storage.js')).listProjects()).filter((p) => p.name === 'Humming ideas').length);
+  for (let i = 0; i < 40 && (await boards()) < 2; i++) await sleep(100);
+  assert.equal(await boards(), 2, 'backup opens as its own soundboard');
+  await until(() => loopsy.engine.pads[1].hasSound);
   await page.click('#projectsSheet .close');
 
   // Reload: same project, pads restored from storage, no welcome screen the second time.
@@ -169,7 +223,7 @@ try {
 
   const layoutKind = () => ev(() => document.getElementById('grid').dataset.layout);
   for (const [w, h, kind, name] of [
-    [844, 390, '4x2', '10-landscape'],
+    [844, 390, '4x2-side', '10-landscape'],
     [372, 828, '2x4', '11-cover-screen'],
     [930, 864, '3x3', '12-unfolded'],
     [864, 930, '3x3', '13-unfolded-portrait'],

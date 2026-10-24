@@ -6,8 +6,11 @@ test('narrow phone / OnePlus Open cover screen uses 2×4 with the Sing strip', (
   assert.equal(chooseLayout(352, 650, 10).kind, '2x4');
 });
 
-test('landscape phone uses 4×2 with the Sing strip', () => {
-  assert.equal(chooseLayout(800, 280, 10).kind, '4x2');
+test('landscape phone puts Sing beside a 4×2 grid, so the pads stay big', () => {
+  const l = chooseLayout(820, 230, 10);
+  assert.equal(l.kind, '4x2-side');
+  assert.ok(l.size > 100, `pads are ${l.size}px`);
+  assert.equal(l.areas[8], '1 / 5 / 3 / 6');
 });
 
 test('near-square unfolded screen uses 3×3 with Sing as the ninth tile', () => {

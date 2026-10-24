@@ -51,10 +51,13 @@ Browsers only allow the microphone on **https** or `localhost`. The Android app 
 | **Hold** a pad | Options: Loop / One-shot, volume, **Trim**, re-record, clear (with undo). |
 | **▶ / ■** | Starts or stops everything. Loops you've switched on start together from the top. |
 | **Next loop: 1 · 2 · 4 · 8 bars** | Sets the length of the next recording. |
-| **Sing on top** (the white tile) | One tap: starts the loops you've switched on and records them **plus your voice**. Tap again to stop and save. It shows a live trace of your pitch, so you can see quiet humming is getting through. |
-| **🎼 Song** | Plan your song: a list of sections, each a length and the pads that play in it. **Build it up for me** makes a starting arrangement. **Play song** plays it hands-free; **Play & sing on top** records you over it and saves the take when the song ends. |
+| **● Rec** (top bar) | Records **just the pads**, with no mic and so no echo. Bring loops in and out while it runs, then tap Rec again to save the take. |
+| **Sing on top** (the white tile) | Records the pads **plus your voice**. Tap again to stop and save. During a Rec take, tapping it adds your voice from that moment. It shows a live trace of your pitch, so you can see quiet humming is getting through. |
+| **🎼 Song** | Plan your song: a list of sections, each a length and the pads that play in it. **Build it up for me** makes a starting arrangement. **Play** plays it hands-free, **Record** records the pads as they play, and **Record & sing** adds your voice; the take saves itself when the song ends. |
 | **♫** | Your recorded takes: play them, share or save them as WAV, delete them (with undo). |
-| **☰ Menu** | **Projects** (save, open, start new or duplicate a workspace), Song, **Looping basics**, and settings. |
+| **＋ New soundboard** | Asks whether to keep the current soundboard. **Save it** lets you name it, then you get a fresh, empty board. **Don't save** lets it go (with Undo). |
+| **Soundboard name** (above the pads, tap it) | Your **Soundboards**: each keeps all eight pads' sounds, the tempo and the song, saved as you go. Open, rename or duplicate them; **Save sounds as WAV** shares every pad's sound as its own file; **Back up / send** makes one `.loopsy` file (all sounds and settings) to keep in Drive or send to another phone, and **Open a backup** brings it back. |
+| **☰ Menu** | Soundboards, Song, **Looping basics**, and settings. |
 | **Tempo** (tap the bpm) | BPM, tap tempo, time signature, count-in, mic boost, latency calibration and the rest of the settings. |
 
 ### Pitch strip
@@ -117,7 +120,8 @@ js/timing.js          pure maths (grid, loop cutting, peaks, onset detection, ta
 js/layout.js          picks the pad grid for the screen / fold — unit-tested
 js/native.js          Android bridges: back button, share sheet
 js/pitch.js           voice pitch detection (YIN) and pitch contours — unit-tested
-js/projects.js        projects: save / open / new / duplicate, autosave
+js/projects.js        soundboards: save / open / new / duplicate / backup, autosave
+js/boardfile.js       the .loopsy backup file format — unit-tested
 js/song.js            song editor and the "build it up" arrangement — unit-tested
 js/storage.js         IndexedDB: projects and recorded takes
 js/wav.js             WAV encoder

@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
+    <div class="chrome">
     <header class="topbar">
       <button class="icon-btn" id="menuBtn" aria-label="Menu">
         <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
@@ -28,11 +29,21 @@
         <svg class="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
       </button>
 
+      <button class="rec-btn" id="recBtn" aria-label="Record what you play">
+        <span class="rec-dot"></span><span class="rec-label" id="recLabel">Rec</span>
+      </button>
+
       <button class="icon-btn" id="takesBtn" aria-label="Recordings">
         <svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="17" cy="16" r="3" /></svg>
         <span class="count" id="takesCount" hidden>0</span>
       </button>
     </header>
+
+    <div class="boardbar">
+      <button class="board-name" id="boardName" aria-label="Soundboards"><span id="boardNameText">My loops</span> <span class="caret">▾</span></button>
+      <button class="new-board" id="newBoardBtn">＋ New soundboard</button>
+    </div>
+    </div>
 
     <main class="grid" id="grid"></main>
 
@@ -143,7 +154,7 @@
     <dialog class="sheet" id="takesSheet">
       <form method="dialog">
         <h2>Recordings</h2>
-        <p class="sub">Tap <b>Sing on top</b> to record the pads with your voice over them, or play a song from <b>🎼 Song</b>.</p>
+        <p class="sub">Tap <b>Rec</b> to record what you play on the pads, or <b>Sing on top</b> to add your voice too. The sounds themselves live in your soundboard.</p>
         <ul class="takes" id="takesList"></ul>
         <button class="close" value="close">Done</button>
       </form>
@@ -153,7 +164,7 @@
     <dialog class="sheet" id="menuSheet">
       <form method="dialog">
         <div class="menu">
-          <button type="button" data-open="projects">📁 Projects<small id="menuProject"></small></button>
+          <button type="button" data-open="projects">🎛 Soundboards<small id="menuProject"></small></button>
           <button type="button" data-open="song">🎼 Song<small>plan when each pad plays, then sing over it</small></button>
           <button type="button" data-open="help">💡 Looping basics<small>bars, layers and leaving space</small></button>
           <button type="button" data-open="settings">⚙︎ Tempo &amp; settings</button>
@@ -162,19 +173,44 @@
       </form>
     </dialog>
 
-    <!-- Projects -->
+    <!-- Soundboards -->
     <dialog class="sheet" id="projectsSheet">
       <form method="dialog">
-        <h2>Projects</h2>
-        <p class="sub">Everything saves as you go. Start a new project to keep this one safe, or open an old one.</p>
+        <h2>Soundboards</h2>
+        <p class="sub">A soundboard keeps all eight pads' sounds, your tempo and your song. It saves as you go.</p>
         <label class="row">Name <input type="text" id="projectName" maxlength="40" autocomplete="off" /></label>
         <div class="actions">
-          <button type="button" id="newProject">+ New project</button>
+          <button type="button" id="exportWavs">🔊 Save sounds as WAV</button>
+          <button type="button" id="exportBoard">📦 Back up / send</button>
+        </div>
+        <div class="actions">
+          <button type="button" id="importBoard">📂 Open a backup</button>
           <button type="button" id="dupProject">Duplicate</button>
         </div>
-        <h3>Your projects</h3>
+        <input type="file" id="importFile" accept=".loopsy,application/octet-stream" hidden />
+        <h3>Your soundboards</h3>
         <ul class="takes" id="projectList"></ul>
         <button class="close" value="close">Done</button>
+      </form>
+    </dialog>
+
+    <!-- New soundboard -->
+    <dialog class="sheet" id="newSheet">
+      <form method="dialog">
+        <section data-step="ask" class="steps">
+          <h2>Start a new soundboard?</h2>
+          <p class="sub" id="newAskText"></p>
+          <button type="button" class="primary big-btn" id="newSave">Save it, then start new</button>
+          <button type="button" class="big-btn danger" id="newDiscard">Don’t save</button>
+          <button type="button" class="big-btn" id="newCancel">Cancel</button>
+        </section>
+        <section data-step="name" class="steps" hidden>
+          <h2>What shall we call it?</h2>
+          <p class="sub">You’ll find it under Soundboards (tap its name above the pads).</p>
+          <input type="text" id="newName" maxlength="40" autocomplete="off" enterkeyhint="done" />
+          <button type="button" class="primary big-btn" id="newNameSave">Save &amp; start new</button>
+          <button type="button" class="big-btn" id="newNameBack">Back</button>
+        </section>
       </form>
     </dialog>
 
@@ -189,8 +225,9 @@
           <button type="button" id="autoSong">✨ Build it up for me</button>
         </div>
         <div class="actions">
-          <button type="button" id="songPlay">▶ Play song</button>
-          <button type="button" id="songSing" class="primary">🎤 Play &amp; sing on top</button>
+          <button type="button" id="songPlay">▶ Play</button>
+          <button type="button" id="songRec">● Record</button>
+          <button type="button" id="songSing" class="primary">🎤 Record &amp; sing</button>
         </div>
         <button class="close" value="close">Done</button>
       </form>

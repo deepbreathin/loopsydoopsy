@@ -1,23 +1,36 @@
-// Projects: each one is a whole workspace (tempo and settings, the eight pads, the song).
-// The open project saves itself a moment after anything changes.
+// Soundboards: each one is a whole workspace (tempo and settings, the eight pads' sounds,
+// the song). The open one saves itself a moment after anything changes. Internally these
+// are "projects" in storage.
 import * as store from './storage.js';
+import { decodeBoard, encodeBoard } from './boardfile.js';
+import { encodeWav } from './wav.js';
 
 const $ = (id) => document.getElementById(id);
+const fileName = (s) => s.replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '') || 'soundboard';
 
 export class Projects {
-  constructor({ engine, settings, defaults, getSong, setSong, toast, onSwitch }) {
-    Object.assign(this, { engine, settings, defaults, getSong, setSong, toast, onSwitch });
+  constructor({ engine, settings, defaults, getSong, setSong, toast, onSwitch, share }) {
+    Object.assign(this, { engine, settings, defaults, getSong, setSong, toast, onSwitch, share });
     this.current = null; // { id, name }
 
     $('projectName').addEventListener('input', (e) => {
       this.current.name = e.target.value.trim() || 'Untitled';
+      this.onSwitch?.();
       this.save();
     });
-    $('newProject').onclick = () => this.create();
     $('dupProject').onclick = () => this.duplicate();
+    $('exportWavs').onclick = () => this.exportWavs();
+    $('exportBoard').onclick = () => this.exportBoard();
+    $('importBoard').onclick = () => $('importFile').click();
+    $('importFile').onchange = (e) => {
+      const f = e.target.files[0];
+      e.target.value = '';
+      if (f) this.importBoard(f);
+    };
+    this.bindNewFlow();
   }
 
-  // Open the last project, or start the first one.
+  // Open the last soundboard, or start the first one.
   async boot() {
     try {
       const id = await store.getCurrentId();
@@ -27,6 +40,10 @@ export class Projects {
       console.warn('load failed', e);
     }
     await this.start('My loops');
+  }
+
+  soundCount() {
+    return this.engine.pads.filter((p) => p.state === 'ready' && p.raw).length;
   }
 
   snapshot() {
@@ -55,6 +72,18 @@ export class Projects {
     }
   }
 
+  // Save the open soundboard before moving to another — or, if it never got any sounds,
+  // drop it so empty boards don't pile up in the list.
+  async leave() {
+    if (!this.current) return;
+    if (!this.soundCount() && !this.getSong()?.sections?.length) {
+      clearTimeout(this.timer);
+      await store.deleteProject(this.current.id);
+    } else {
+      await this.flush();
+    }
+  }
+
   apply(p) {
     const e = this.engine;
     e.stopTransport();
@@ -79,13 +108,63 @@ export class Projects {
     this.apply(p);
   }
 
-  async create() {
-    await this.flush();
-    const n = (await store.listProjects()).length + 1;
-    await this.start(`Project ${n}`);
-    this.toast('New project — the old one is saved');
-    this.render();
+  async nextName() {
+    const names = new Set((await store.listProjects()).map((p) => p.name));
+    let n = names.size + 1;
+    while (names.has(`Soundboard ${n}`)) n++;
+    return `Soundboard ${n}`;
   }
+
+  // ---------- "New soundboard": save this one (and name it) or let it go, then start fresh ----------
+
+  bindNewFlow() {
+    const step = (name) => {
+      for (const s of $('newSheet').querySelectorAll('[data-step]')) s.hidden = s.dataset.step !== name;
+    };
+    this.newStep = step;
+    $('newSave').onclick = () => {
+      step('name');
+      $('newName').value = this.current.name;
+      $('newName').select();
+    };
+    $('newNameBack').onclick = () => step('ask');
+    $('newCancel').onclick = () => $('newSheet').close();
+    $('newNameSave').onclick = async () => {
+      this.current.name = $('newName').value.trim() || this.current.name;
+      await this.flush();
+      const saved = this.current.name;
+      $('newSheet').close();
+      await this.start(await this.nextName());
+      this.toast(`Saved “${saved}” — here’s a fresh soundboard`);
+    };
+    $('newDiscard').onclick = async () => {
+      await this.flush();
+      const old = this.snapshot();
+      $('newSheet').close();
+      await store.deleteProject(old.id);
+      await this.start(await this.nextName());
+      this.toast(`Let “${old.name}” go — fresh soundboard`, 'Undo', async () => {
+        await this.leave();
+        await store.saveProject(old);
+        this.apply(old);
+      });
+    };
+  }
+
+  async newSoundboard() {
+    const n = this.soundCount();
+    if (!n) {
+      // Nothing to keep: just make sure it's a clean slate.
+      await this.flush();
+      this.toast('This soundboard is already empty — tap a pad to record');
+      return;
+    }
+    $('newAskText').textContent = `“${this.current.name}” has ${n} sound${n === 1 ? '' : 's'}. Do you want to keep it? You can open it again any time from Soundboards.`;
+    this.newStep('ask');
+    $('newSheet').showModal();
+  }
+
+  // ---------- list ----------
 
   async duplicate() {
     await this.flush();
@@ -96,14 +175,14 @@ export class Projects {
 
   async open(id) {
     if (id === this.current.id) return;
-    await this.flush();
+    await this.leave();
     const p = await store.loadProject(id);
     if (p) this.apply(p);
     this.render();
   }
 
   async remove(id, name) {
-    if (!confirm(`Delete “${name}”? Its pads and song will be gone.`)) return;
+    if (!confirm(`Delete “${name}”? Its sounds and song will be gone.`)) return;
     await store.deleteProject(id);
     this.render();
   }
@@ -118,11 +197,13 @@ export class Projects {
     $('projectName').value = this.current.name;
     const list = $('projectList');
     list.innerHTML = '';
-    for (const p of await store.listProjects()) {
+    const all = await store.listProjects();
+    all.sort((a, b) => (b.id === this.current.id) - (a.id === this.current.id)); // open one first
+    for (const p of all) {
       const li = document.createElement('li');
       const here = p.id === this.current.id;
       li.className = here ? 'current' : '';
-      li.innerHTML = `<div class="meta"><b></b><small>${p.padCount} pad${p.padCount === 1 ? '' : 's'} · ${new Date(p.updated).toLocaleDateString()}${here ? ' · open now' : ''}</small></div>
+      li.innerHTML = `<div class="meta"><b></b><small>${p.padCount} sound${p.padCount === 1 ? '' : 's'} · ${new Date(p.updated).toLocaleDateString()}${here ? ' · open now' : ''}</small></div>
         ${here ? '' : '<button type="button" data-a="open" class="pill">Open</button><button type="button" data-a="del" aria-label="Delete">✕</button>'}`;
       li.querySelector('b').textContent = p.name;
       li.onclick = (e) => {
@@ -131,6 +212,39 @@ export class Projects {
         else if (!here) this.open(p.id);
       };
       list.append(li);
+    }
+    const has = this.soundCount() > 0;
+    $('exportWavs').disabled = $('exportBoard').disabled = !has;
+  }
+
+  // ---------- files ----------
+
+  // Every pad's sound as its own WAV, exactly as it loops (trimmed).
+  async exportWavs() {
+    const base = fileName(this.current.name);
+    const files = this.engine.pads
+      .filter((p) => p.hasSound)
+      .map((p) => ({ blob: encodeWav(p.buffer.getChannelData(0), p.buffer.sampleRate), name: `${base}-pad${p.index + 1}.wav` }));
+    if (files.length) await this.share(files, `${this.current.name} — sounds`);
+  }
+
+  // The whole soundboard in one file you can keep anywhere and open again.
+  async exportBoard() {
+    await this.flush();
+    const blob = await encodeBoard(this.snapshot());
+    await this.share([{ blob, name: `${fileName(this.current.name)}.loopsy` }], this.current.name);
+  }
+
+  async importBoard(file) {
+    try {
+      const b = await decodeBoard(file);
+      await this.leave();
+      await this.start(b.name || file.name.replace(/\.loopsy$/, ''), { settings: b.settings, song: b.song, pads: b.pads });
+      this.toast(`Opened “${this.current.name}”`);
+      this.render();
+    } catch (e) {
+      console.warn(e);
+      this.toast('That file isn’t a Loopsy Doopsy soundboard');
     }
   }
 }

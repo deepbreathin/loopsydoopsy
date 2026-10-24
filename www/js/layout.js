@@ -1,11 +1,12 @@
 // Picks the pad arrangement that gives the biggest circles for the screen we're on:
 //  - narrow phone / folded cover screen  → 2×4 pads with a "Sing" strip underneath
-//  - landscape phone                      → 4×2 pads with the strip underneath
+//  - landscape phone                      → 4×2 pads with the Sing tile as a column on the right
 //  - near-square unfolded inner screen    → 3×3, with the Sing tile as the ninth square
 //  - half-open like a book (hinge reported) → 2×2 pads either side of the fold
 // Pure function so it can be unit-tested; `apply` writes the result into the DOM.
 
 export const STRIP = 64; // height of the Sing strip when it isn't a full tile
+export const SIDE = 104; // width of the Sing column beside the pads (short landscape screens)
 
 // w, h: grid area in CSS px. gap: grid gap. hinge: { start, end } along x (book posture)
 // or null. Returns { cols, rows, template, areas } where areas[i] is a CSS grid-area for
@@ -17,22 +18,34 @@ export function chooseLayout(w, h, gap, hinge = null) {
   const candidates = [
     { cols: 2, rows: 4, strip: true },
     { cols: 4, rows: 2, strip: true },
+    { cols: 4, rows: 2, side: true },
     { cols: 3, rows: 3, strip: false },
   ];
   let best = null;
   for (const c of candidates) {
     const ph = c.strip ? h - STRIP - gap : h;
-    const cw = (w - gap * (c.cols - 1)) / c.cols;
+    const pw = c.side ? w - SIDE - gap : w;
+    const cw = (pw - gap * (c.cols - 1)) / c.cols;
     const ch = (ph - gap * (c.rows - 1)) / c.rows;
     const size = Math.min(cw, ch);
     // Ties go to the earlier candidate; the 3×3 must clearly win since it shrinks the strip
     // into a square.
-    const score = c.strip ? size : size * 0.97;
+    const score = c.strip || c.side ? size : size * 0.97;
     if (!best || score > best.score) best = { ...c, score, size };
   }
-  const { cols, rows, strip } = best;
+  const { cols, rows, strip, side } = best;
   const areas = [];
   for (let i = 0; i < 8; i++) areas.push(`${Math.floor(i / cols) + 1} / ${(i % cols) + 1}`);
+  if (side) {
+    areas.push(`1 / ${cols + 1} / ${rows + 1} / ${cols + 2}`);
+    return {
+      kind: `${cols}x${rows}-side`,
+      columns: `repeat(${cols}, minmax(0, 1fr)) ${SIDE}px`,
+      rows: `repeat(${rows}, minmax(0, 1fr))`,
+      areas,
+      size: best.size,
+    };
+  }
   areas.push(strip ? `${rows + 1} / 1 / ${rows + 2} / ${cols + 1}` : `3 / 3`);
   return {
     kind: strip ? `${cols}x${rows}` : '3x3',

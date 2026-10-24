@@ -1,7 +1,7 @@
 import { Engine, PAD_COUNT } from './engine.js';
 import { drawPad, drawSing } from './pad-view.js';
 import * as layout from './layout.js';
-import { isNative, onBackButton, shareFile } from './native.js';
+import { isNative, onBackButton, shareFiles } from './native.js';
 import { pitchRange } from './pitch.js';
 import { Projects } from './projects.js';
 import { SongEditor } from './song.js';
@@ -35,10 +35,13 @@ const projects = new Projects({
   defaults: DEFAULTS,
   getSong: () => song,
   setSong: (s) => (song = s ?? null),
-  toast: (m) => toast(m),
+  toast: (...a) => toast(...a),
+  share: (files, title) => share(files, title),
   onSwitch: () => {
     syncToggles();
-    $('menuProject').textContent = projects.current?.name ?? '';
+    const name = projects.current?.name ?? '';
+    $('menuProject').textContent = name;
+    $('boardNameText').textContent = name;
   },
 });
 const save = () => projects.save();
@@ -50,8 +53,7 @@ const songEditor = new SongEditor({
     song = s;
     save();
   },
-  onPlay: () => playSong(false),
-  onSing: () => playSong(true),
+  onPlay: (mode) => playSong(mode),
 });
 const padEls = [];
 
@@ -242,7 +244,10 @@ $('padClear').onclick = () => {
   });
 };
 
-// ---------- play / sing ----------
+// ---------- play / record ----------
+//
+// A "take" records what comes out of the app. Rec takes just the pads (no mic, so no echo);
+// Sing on top adds your voice. Tapping Sing during a Rec take adds your voice from then on.
 
 $('playBtn').onclick = async () => {
   await engine.init();
@@ -250,25 +255,25 @@ $('playBtn').onclick = async () => {
   else engine.startTransport();
 };
 
-// Stop everything; a "Play & sing" take stopped early is still saved.
+// Stop everything; a song take stopped early is still saved.
 function stopAll() {
   engine.stopTransport();
-  if (songSession && engine.session) stopSinging();
+  if (songSession && engine.session) stopTake();
 }
 
 let sessionStarted = 0;
-let songSession = false; // the current take was started by "Play & sing", so it ends with the song
+let songSession = false; // the current take was started from the song, so it ends with the song
 
 function setLive(on) {
   settings.liveMic = on;
   engine.applyLiveSettings();
 }
 
-async function startSinging() {
-  setLive(true);
+async function startTake({ voice }) {
+  await engine.init();
+  setLive(voice);
   try {
-    await engine.ensureMic();
-    engine.applyLiveSettings();
+    if (voice) await engine.ensureMic();
     await engine.startSession();
   } catch (e) {
     setLive(false);
@@ -279,17 +284,41 @@ async function startSinging() {
   return true;
 }
 
-async function toggleSing() {
-  if (engine.session) return stopSinging();
-  if (!(await startSinging())) return;
-  // Bring the backing in if it's switched on but stopped.
+// Bring the backing in if it's switched on but stopped.
+function startBacking() {
   if (!engine.running && engine.pads.some((p) => p.enabled && p.hasSound && p.mode === 'loop')) engine.startTransport();
+}
+
+$('recBtn').onclick = async () => {
+  if (engine.session) return stopTake();
+  if (await startTake({ voice: false })) {
+    startBacking();
+    toast('Recording the pads — tap them to bring loops in and out');
+  }
+};
+
+async function toggleSing() {
+  if (engine.session && !settings.liveMic) {
+    // Already recording the pads: add your voice from here on.
+    setLive(true);
+    try {
+      await engine.ensureMic();
+      toast('Your voice is in the take now');
+    } catch (e) {
+      setLive(false);
+      micError(e);
+    }
+    return;
+  }
+  if (engine.session) return stopTake();
+  if (await startTake({ voice: true })) startBacking();
 }
 
 const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
-async function stopSinging() {
+async function stopTake() {
   songSession = false;
+  const voice = settings.liveMic;
   const result = await engine.stopSession();
   setLive(false);
   if (!result || result.samples.length < result.sampleRate * 0.3) return toast('Recording too short');
@@ -297,7 +326,7 @@ async function stopSinging() {
   const takes = await store.listTakes();
   const take = {
     id: Date.now(),
-    name: `${projects.current?.name ?? 'Jam'} · take ${takes.length + 1}`,
+    name: `${projects.current?.name ?? 'Jam'} · take ${takes.length + 1}${voice ? ' (with voice)' : ''}`,
     created: Date.now(),
     duration: result.samples.length / result.sampleRate,
     blob,
@@ -307,17 +336,18 @@ async function stopSinging() {
   toast(`Saved “${take.name}”`, 'Open', openTakes);
 }
 
-async function playSong(sing) {
+// mode: 'play' | 'record' (the pads) | 'sing' (the pads + your voice)
+async function playSong(mode) {
   await engine.init();
   if (!song?.sections?.length) return;
-  if (engine.session) await stopSinging();
-  if (sing && !(await startSinging())) return;
-  songSession = sing;
+  if (engine.session) await stopTake();
+  if (mode !== 'play' && !(await startTake({ voice: mode === 'sing' }))) return;
+  songSession = mode !== 'play';
   engine.playSong(song.sections);
 }
 
 engine.addEventListener('songend', () => {
-  if (songSession && engine.session) stopSinging();
+  if (songSession && engine.session) stopTake();
 });
 
 // ---------- menu & sheets ----------
@@ -333,6 +363,11 @@ $('menuSheet').addEventListener('click', (e) => {
   ({ projects: () => projects.show(), song: () => songEditor.open(), help: openHelp, settings: openSettings })[what]();
 });
 $('tempoBtn').onclick = () => openSettings();
+$('boardName').onclick = () => projects.show();
+$('newBoardBtn').onclick = async () => {
+  if (engine.session) await stopTake();
+  projects.newSoundboard();
+};
 $('takesBtn').onclick = () => openTakes();
 $('songBtn').onclick = () => {
   if (engine.song) stopAll();
@@ -546,30 +581,34 @@ async function renderTakes() {
   }
 }
 
-async function shareTake(t) {
-  const name = `${t.name.replace(/\W+/g, '-')}.wav`;
+const shareTake = (t) => share([{ blob: t.blob, name: `${t.name.replace(/\W+/g, '-')}.wav` }], t.name);
+
+// Android: the share sheet (Drive, WhatsApp, Files…). Browser: share sheet if it can, else download.
+async function share(files, title) {
   if (isNative) {
     try {
-      await shareFile(t.blob, name, t.name);
+      await shareFiles(files, title);
     } catch (e) {
-      if (!/cancel/i.test(e?.message || '')) toast('Couldn’t share that recording');
+      if (!/cancel/i.test(e?.message || '')) toast('Couldn’t share that');
     }
     return;
   }
-  const file = new File([t.blob], name, { type: 'audio/wav' });
-  if (navigator.canShare?.({ files: [file] })) {
+  const list = files.map((f) => new File([f.blob], f.name, { type: f.blob.type || 'application/octet-stream' }));
+  if (navigator.canShare?.({ files: list })) {
     try {
-      await navigator.share({ files: [file], title: t.name });
+      await navigator.share({ files: list, title });
       return;
     } catch (e) {
       if (e.name === 'AbortError') return;
     }
   }
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(file);
-  a.download = file.name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  for (const f of list) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(f);
+    a.download = f.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
 }
 
 // ---------- render loop ----------
@@ -591,10 +630,14 @@ function hintText(t) {
     if (sp.index < 0) return `Song starts in ${sp.beatsToStart}…${engine.session ? ' get ready to sing' : ''}`;
     return `Song · section ${sp.index + 1} of ${sp.total} · ${plural(sp.barsLeft, 'bar')} left${engine.session ? ' · recording' : ''}`;
   }
-  if (engine.session) return 'Singing on top — tap the tile again to stop and save';
+  if (engine.session) {
+    return settings.liveMic
+      ? 'Singing on top — tap the tile again to stop and save'
+      : 'Recording the pads · Rec stops & saves · Sing adds your voice';
+  }
   if (pads.some((p) => p.pending?.type === 'start')) return 'Coming in from the top when the loops come round';
   if (!pads.some((p) => p.hasSound)) return 'Tap an empty pad to record · tap to play · hold for options';
-  return 'Tap to play · hold a pad for loop / one-shot, trim and more';
+  return 'Tap to play · hold a pad for options · Rec records what you play';
 }
 
 // Pitch for a pad's strip: from its pitch contour while it plays, or the mic while it records.
@@ -685,7 +728,8 @@ function frame() {
       singView.range.hi += (mid + span / 2 - singView.range.hi) * 0.04;
     }
     drawSing(singView.g, singView.w, singView.h, {
-      recording: !!engine.session,
+      recording: !!engine.session && settings.liveMic,
+      padRec: !!engine.session && !settings.liveMic,
       live: settings.liveMic,
       micOpen: !!engine.mic,
       levels: engine.levels,
@@ -693,11 +737,13 @@ function frame() {
       view: singView.range,
       elapsed: engine.session ? fmtTime((Date.now() - sessionStarted) / 1000) : '',
     });
-    singView.el.classList.toggle('recording', !!engine.session);
+    singView.el.classList.toggle('recording', !!engine.session && settings.liveMic);
   }
 
   document.body.classList.toggle('playing', engine.running);
   document.body.classList.toggle('session', !!engine.session);
+  const recText = engine.session ? fmtTime((Date.now() - sessionStarted) / 1000) : 'Rec';
+  if ($('recLabel').textContent !== recText) $('recLabel').textContent = recText;
   document.body.classList.toggle('song', !!engine.song);
   $('songBtnLabel').textContent = engine.song ? '■ Stop' : 'Song';
 

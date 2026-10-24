@@ -25,8 +25,9 @@ export const songBars = (sections) => sections.reduce((n, s) => n + s.bars, 0);
 const $ = (id) => document.getElementById(id);
 
 export class SongEditor {
-  constructor({ engine, getSong, setSong, onPlay, onSing }) {
-    Object.assign(this, { engine, getSong, setSong, onPlay, onSing });
+  // onPlay(mode): 'play' just plays, 'record' records the pads, 'sing' records them + voice.
+  constructor({ engine, getSong, setSong, onPlay }) {
+    Object.assign(this, { engine, getSong, setSong, onPlay });
     $('addSection').onclick = () => {
       const s = this.sections();
       const last = s.at(-1);
@@ -37,14 +38,16 @@ export class SongEditor {
       if (!s.length) return;
       this.commit(s);
     };
-    $('songPlay').onclick = () => {
-      $('songSheet').close();
-      this.onPlay();
-    };
-    $('songSing').onclick = () => {
-      $('songSheet').close();
-      this.onSing();
-    };
+    for (const [id, mode] of [
+      ['songPlay', 'play'],
+      ['songRec', 'record'],
+      ['songSing', 'sing'],
+    ]) {
+      $(id).onclick = () => {
+        $('songSheet').close();
+        this.onPlay(mode);
+      };
+    }
     $('sectionList').addEventListener('click', (e) => {
       const b = e.target.closest('button');
       if (!b) return;
@@ -112,7 +115,7 @@ export class SongEditor {
     }
     const total = songBars(s) * this.engine.bar;
     $('songInfo').textContent = s.length ? `${s.length} sections · ${Math.floor(total / 60)}:${String(Math.round(total % 60)).padStart(2, '0')}` : '';
-    $('songPlay').disabled = $('songSing').disabled = !s.length;
+    $('songPlay').disabled = $('songRec').disabled = $('songSing').disabled = !s.length;
     $('autoSong').disabled = !this.loopPads().length;
   }
 }

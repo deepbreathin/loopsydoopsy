@@ -235,10 +235,17 @@ export function drawSing(g, w, h, v) {
   const ink = v.recording ? '#fff' : 'rgba(20,14,30,0.78)';
   const soft = v.recording ? 'rgba(255,255,255,0.75)' : 'rgba(20,14,30,0.5)';
   const title = v.recording ? `Recording ${v.elapsed}` : 'Sing on top';
-  const sub = v.recording ? 'tap to stop & save' : 'records the pads + your voice';
+  const sub = v.recording ? 'tap to stop & save' : v.padRec ? 'tap to add your voice to the take' : 'records the pads + your voice';
 
   let meter;
-  if (strip) {
+  if (h > w * 1.6) {
+    // Tall column beside the pads (landscape phone).
+    const s = w * 0.15;
+    drawMic(g, w / 2, h * 0.12, s, ink);
+    label(g, w / 2, h * 0.8, s * 1.05, ink, v.recording ? v.elapsed : 'Sing', true);
+    label(g, w / 2, h * 0.8 + s * 1.2, s * 0.8, soft, v.recording ? 'tap to stop' : v.padRec ? '+ voice' : 'on top');
+    meter = { x: w * 0.12, y: h * 0.26, w: w * 0.76, h: h * 0.42 };
+  } else if (strip) {
     const s = Math.min(h * 0.32, 22);
     drawMic(g, h * 0.55, h / 2 + s * 0.1, s, ink);
     g.textAlign = 'left';

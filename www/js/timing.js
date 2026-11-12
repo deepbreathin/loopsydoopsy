@@ -81,6 +81,27 @@ export function rotate(data, shift) {
   return out;
 }
 
+// A copy of `raw` with each [from, to) range silenced, fading in and out over `fade` samples
+// at the edges so there are no clicks. The length never changes.
+export function applyMutes(raw, ranges, fade = 0) {
+  const out = new Float32Array(raw);
+  for (const [a0, b0] of ranges) {
+    const a = Math.max(0, Math.min(a0, b0));
+    const b = Math.min(raw.length, Math.max(a0, b0));
+    if (b <= a) continue;
+    const f = Math.min(fade, Math.floor((b - a) / 2));
+    for (let i = a; i < b; i++) {
+      const edge = Math.min(i - a, b - 1 - i);
+      out[i] *= f && edge < f ? 1 - (edge + 1) / (f + 1) : 0;
+    }
+  }
+  return out;
+}
+
+// Where a buffer position (sample index into a rendered loop) came from in the raw capture,
+// undoing the turn applied to takes that began partway through the loop cycle.
+export const rawIndex = (i, trimStart, length, shift) => trimStart + mod(i - shift, length);
+
 // How many bars a sound of `seconds` is, if it's (very nearly) one of `lengths`; else null.
 export function fitBars(seconds, bar, lengths, tolerance = 0.03) {
   for (const n of lengths) if (Math.abs(seconds / bar - n) <= n * tolerance) return n;

@@ -41,3 +41,18 @@ test('fitBars recognises whole-bar loops', () => {
   assert.equal(fitBars(2, 2, [1, 2, 4, 8]), 1);
   assert.equal(fitBars(5, 2, [1, 2, 4, 8]), null);
 });
+
+test('silencing a part keeps the length and fades the edges', async () => {
+  const { applyMutes, rawIndex } = await import('../www/js/timing.js');
+  const raw = new Float32Array(20).fill(1);
+  const out = applyMutes(raw, [[5, 15]], 2);
+  assert.equal(out.length, 20);
+  assert.equal(raw[10], 1, 'the original is untouched');
+  assert.equal(out[4], 1);
+  assert.equal(out[10], 0);
+  assert.ok(out[5] > 0 && out[5] < 1, 'fades out at the start of the silence');
+  assert.ok(out[14] > 0 && out[14] < 1, 'and back in at the end');
+  assert.equal(out[15], 1);
+  assert.equal(rawIndex(0, 100, 10, 3), 107);
+  assert.equal(rawIndex(3, 100, 10, 3), 100);
+});

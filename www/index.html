@@ -60,7 +60,7 @@
         <span>bars</span>
       </div>
       <button class="song-btn" id="songBtn" aria-label="Song">🎼 <span id="songBtnLabel">Song</span></button>
-      <p class="hint" id="hint">Tap an empty pad to record · tap to play · hold for options</p>
+      <p class="hint" id="hint">Tap an empty pad to record · tap to play · ⚙ for options</p>
     </footer>
 
     <div class="toast" id="toast" hidden><span id="toastMsg"></span><button id="toastAction"></button></div>
@@ -75,9 +75,9 @@
           <button type="button" data-mode="loop">∞ Loop<small>tap on / off, stays in time</small></button>
           <button type="button" data-mode="oneshot">1× One-shot<small>tap to play once</small></button>
         </div>
-        <label class="row">Volume <input type="range" id="padVol" min="0" max="1.5" step="0.01" /></label>
+        <label class="row">Volume <span class="val" id="padVolVal"></span> <input type="range" id="padVol" min="0" max="1.5" step="0.01" /></label>
         <div class="actions">
-          <button type="button" id="padTrim">✂︎ Trim</button>
+          <button type="button" id="padTrim">✂︎ Trim &amp; silence</button>
           <button type="button" id="padRerec">● Re-record</button>
           <button type="button" id="padClear" class="danger">Clear</button>
         </div>
@@ -95,8 +95,16 @@
     <dialog class="sheet wide" id="trimSheet">
       <form method="dialog">
         <h2>Trim <small id="trimInfo"></small></h2>
-        <p class="sub">Drag the window to line the loop up. The dim parts either side were caught just before you started and after you finished, so a slightly early start or an overrun can be fixed here.</p>
+        <p class="sub" id="trimHelp"></p>
+        <div class="seg tabs" id="trimMode">
+          <button type="button" data-mode="move">↔ Move into time</button>
+          <button type="button" data-mode="silence">🔇 Silence a part</button>
+        </div>
         <canvas id="trimCanvas"></canvas>
+        <div class="actions" id="silenceRow" hidden>
+          <button type="button" id="silenceUndo">↶ Undo last silence</button>
+          <button type="button" id="silenceClear">Clear all silences</button>
+        </div>
         <div class="trim-row">
           <button type="button" id="nudgeL" aria-label="10 ms earlier">‹</button>
           <div class="len-seg" id="trimLen">
@@ -138,6 +146,10 @@
         <label class="row check"><input type="checkbox" id="setCountIn" /> Count-in: a bar's countdown on the pad before recording starts</label>
         <label class="row check"><input type="checkbox" id="setBeeps" /> Beep during the count-in (it stops before recording, so it isn't recorded)</label>
         <label class="row check"><input type="checkbox" id="setAutoPlay" /> Start looping as soon as a recording finishes</label>
+        <label class="row">Microphone
+          <select id="setMic"><option value="">Default</option></select>
+        </label>
+        <p class="sub" id="micNote">Pick the mic that sounds best. With Bluetooth headphones, the phone's own mic usually sounds better: a Bluetooth headset's mic often switches it into a muffled “phone call” mode.</p>
         <label class="row">Mic boost <span class="val" id="boostVal">off</span>
           <input type="range" id="setBoost" min="1" max="4" step="0.05" />
         </label>
@@ -148,7 +160,7 @@
         <label class="row check"><input type="checkbox" id="setMonitor" /> Hear your voice through the app (headphones only!)</label>
 
         <h3>Latency</h3>
-        <p class="sub">How late the mic hears things. Calibrate with the speaker on and headphones off.</p>
+        <p class="sub">How late the mic hears things. Calibrate with the speaker on and headphones off. Every phone and computer is a bit different, and <b>Bluetooth headphones add extra delay</b> (often a fifth of a second, and it varies between headphones), so recordings can land late. Wired headphones are best. With Bluetooth, try 200 here, then fine-tune any loop with ⚙ → Trim.</p>
         <div class="tempo-row">
           <input type="number" id="latInput" placeholder="auto" min="0" max="500" step="1" inputmode="numeric" /><span>ms</span>
           <button type="button" id="calBtn">Calibrate</button>
@@ -202,7 +214,7 @@
           <button type="button" id="dupProject">Duplicate</button>
         </div>
         <input type="file" id="importFile" hidden />
-        <p class="sub"><b>Making music with a friend?</b> Tap <b>Back up / send</b> and send them the file. They open it with <b>Open a backup</b>, add their own layers, and send it back. Single sounds can go back and forth too: hold a pad → <b>Send this sound</b>.</p>
+        <p class="sub"><b>Making music with a friend?</b> Tap <b>Back up / send</b> and send them the file. They open it with <b>Open a backup</b>, add their own layers, and send it back. Single sounds can go back and forth too: a pad's ⚙ → <b>Send this sound</b>.</p>
         <h3>Your soundboards</h3>
         <ul class="takes" id="projectList"></ul>
         <button class="close" value="close">Done</button>
@@ -353,7 +365,7 @@
 
         <section>
           <h3>Timing</h3>
-          <p>Before recording, a hand sweeps once round the pad, one tick per beat. Come in right as it reaches the <b>red mark at the top</b>, when the ring turns red. The ring turns <b>white</b> for the last bar: that's your cue to finish your phrase and take a breath. Slightly early or late? Hold the pad and use <b>Trim</b>. Headphones stop the loops leaking into the mic.</p>
+          <p>Before recording, a hand sweeps once round the pad, one tick per beat. Come in right as it reaches the <b>red mark at the top</b>, when the ring turns red. The ring turns <b>white</b> for the last bar: that's your cue to finish your phrase and take a breath. Slightly early or late? Tap the pad's ⚙ → <b>Trim</b> and slide it into place while it plays with the others. Headphones stop the loops leaking into the mic.</p>
         </section>
 
         <section>
@@ -385,8 +397,10 @@
       </div>
       <h2 class="steps-title">Getting started</h2>
       <ol>
-        <li><b>Headphones on</b>, so the loops don't leak into your mic.</li>
-        <li><b>Tap a pad.</b> A hand sweeps round once: start humming when it reaches the <b>red mark</b>. Try a low “bom… bom” first.</li>
+        <li><b>Headphones on</b>, so the loops don't leak into your mic. Wired ones are best: Bluetooth headphones add a little delay.</li>
+        <li><b>Tap a pad.</b> It starts together with any loops playing: a hand sweeps round once, then start humming as it reaches the <b>red mark</b>. Try a low “bom… bom” first.</li>
+        <li><b>Line up with a loop:</b> watch the pad you want to match. Its playhead comes round to the top just as yours starts, so you can come in close.</li>
+        <li>A little off? Tap the pad's <b>⚙</b> → <b>Trim</b> and slide it into place. It keeps playing with your other loops, so you can hear when it sits right. You can silence a breath there too.</li>
         <li><b>Add layers</b> on other pads: a beat, then a tune. Tap pads to bring them in and out.</li>
         <li>Tap <b>Sing on top</b> or <b>● Rec</b> to record a take, then <b>♫</b> to save it as an MP3.</li>
       </ol>

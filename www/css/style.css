@@ -1136,3 +1136,38 @@ div.needs-sound {
   font-size: 16px;
   margin: 14px 0 0;
 }
+
+/* ---------- pad settings cog ---------- */
+
+.pad .cog {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 40px;
+  height: 40px;
+  padding: 9px;
+  border-radius: 50%;
+  background: rgb(20 14 30 / 0.1);
+  color: rgb(20 14 30 / 0.6);
+  z-index: 2;
+}
+.pad .cog svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.pad .cog:hover {
+  background: rgb(20 14 30 / 0.2);
+}
+.pad.armed .cog,
+.pad.recording .cog,
+.pad.processing .cog {
+  visibility: hidden;
+}
+.pad .num {
+  left: 50px;
+  top: 16px;
+}

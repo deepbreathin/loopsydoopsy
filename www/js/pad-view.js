@@ -80,7 +80,10 @@ export function drawPad(g, w, h, pad, v) {
       circle(g, cx, cy, R);
       g.stroke();
       g.setLineDash([]);
-      label(g, cx, cy, R * 0.17, ink + '0.8)', 'get ready…', true);
+      // Waiting for the loops to come round to their top; the count-in bar comes after.
+      label(g, cx, cy - R * 0.12, R * 0.15, ink + '0.8)', 'starts with', true);
+      label(g, cx, cy + R * 0.08, R * 0.15, ink + '0.8)', 'the loops', true);
+      label(g, cx, cy + R * 0.3, R * 0.085, ink + '0.6)', v.waitBars > 1 ? `count-in in ${v.waitBars} bars` : 'count-in next bar');
       return;
     }
     // Swept wedge, so how far round it is reads at a glance.

@@ -1,7 +1,14 @@
 // Trim editor: slide a fixed-length (bar-locked) window over the raw take, or set a free
-// length for one-shots. Changes are heard live at the next bar.
+// length for one-shots, and silence parts of it (a breath, a cough) without changing its
+// length. The pad keeps playing in time with the other loops the whole time, and changes
+// are heard from the next bar; a playhead shows where it is.
+import { mod, rawIndex } from './timing.js';
 
 const $ = (id) => document.getElementById(id);
+const HELP = {
+  move: 'Drag the coloured window to slide the loop earlier or later, and listen: it plays along with your other loops. The dim parts either side were caught just before you started and after you finished.',
+  silence: 'Drag across a part to silence it, like a breath or a click. The loop stays the same length.',
+};
 
 export class TrimEditor {
   constructor(engine, { onClose }) {
@@ -11,6 +18,19 @@ export class TrimEditor {
     this.canvas = $('trimCanvas');
     this.g = this.canvas.getContext('2d');
     this.pad = null;
+    this.mode = 'move';
+    $('trimMode').addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (b) this.setMode(b.dataset.mode);
+    });
+    $('silenceUndo').onclick = () => {
+      this.pad.mutes.pop();
+      this.commit();
+    };
+    $('silenceClear').onclick = () => {
+      this.pad.mutes = [];
+      this.commit();
+    };
 
     $('trimLen').addEventListener('click', (e) => {
       const b = e.target.closest('button');
@@ -35,11 +55,14 @@ export class TrimEditor {
       this.commit();
     };
     $('trimCancel').onclick = () => {
-      this.engine.restore(this.pad, this.snapshot);
+      const pad = this.pad;
+      this.engine.restore(pad, this.snapshot);
+      if (this.wasEnabled && pad.mode === 'loop') this.engine.trigger(pad);
       this.dlg.close('cancel');
     };
     this.dlg.addEventListener('close', () => {
       this.pad = null;
+      cancelAnimationFrame(this.raf);
       this.onClose?.();
     });
 
@@ -50,21 +73,35 @@ export class TrimEditor {
       const x = this.toX(e);
       const endX = this.sampleToX(this.pad.trimStart + this.pad.lengthSamples);
       const resize = this.pad.free && Math.abs(x - endX) < 22;
-      drag = { x, start: this.pad.trimStart, len: this.pad.lengthSamples, resize };
+      drag = { x, start: this.pad.trimStart, len: this.pad.lengthSamples, resize, silence: this.mode === 'silence' };
+      if (drag.silence) this.selection = [x, x];
     });
     this.canvas.addEventListener('pointermove', (e) => {
       if (!drag) return;
       const p = this.pad;
       const d = (this.toX(e) - drag.x) * this.samplesPerPx;
-      if (drag.resize) {
+      if (drag.silence) {
+        this.selection = [drag.x, this.toX(e)];
+      } else if (drag.resize) {
         p.lengthSamples = Math.max(Math.round(0.05 * p.sampleRate), Math.round(drag.len + d));
       } else {
         p.trimStart = this.snap(Math.round(drag.start + d));
+        // Let you hear it while you drag (a few times a second, not on every move).
+        if (performance.now() - (this.lastLive || 0) > 150) {
+          this.lastLive = performance.now();
+          this.engine.replaceBuffer(p);
+        }
       }
       this.draw();
     });
     const end = () => {
       if (!drag) return;
+      if (drag.silence && this.selection) {
+        const [a, b] = this.selection.map((x) => Math.round(this.viewStart + x * this.samplesPerPx));
+        // A tap rather than a drag silences nothing.
+        if (Math.abs(b - a) > 0.02 * this.pad.sampleRate) this.pad.mutes.push([Math.min(a, b), Math.max(a, b)]);
+        this.selection = null;
+      }
       drag = null;
       this.commit();
     };
@@ -76,9 +113,36 @@ export class TrimEditor {
     this.pad = pad;
     this.snapshot = this.engine.snapshot(pad);
     $('trimFold').checked = pad.fold;
+    this.setMode('move');
     this.dlg.showModal();
     this.resize();
     this.draw();
+    // Play it (in time with whatever else is playing) so every change can be heard.
+    this.wasEnabled = pad.enabled;
+    if (pad.mode === 'loop' && !pad.enabled) this.engine.trigger(pad);
+    const tick = () => {
+      if (!this.pad) return;
+      this.draw();
+      this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  }
+
+  setMode(mode) {
+    this.mode = mode;
+    for (const b of $('trimMode').children) b.setAttribute('aria-selected', b.dataset.mode === mode);
+    $('trimHelp').textContent = HELP[mode];
+    $('silenceRow').hidden = mode !== 'silence';
+  }
+
+  // Where the pad's playhead is, as a sample position in the raw capture (or null).
+  playheadSample() {
+    const p = this.pad;
+    const f = this.engine.playhead(p);
+    if (f == null || !p.lengthSamples) return null;
+    const i = Math.floor(f * p.lengthSamples);
+    const turn = p.free || !p.bars ? 0 : mod(p.startBar || 0, p.bars);
+    return rawIndex(i, p.trimStart, p.lengthSamples, Math.round((turn * p.lengthSamples) / p.bars));
   }
 
   resize() {
@@ -166,6 +230,28 @@ export class TrimEditor {
       g.fillRect(x, mid - a, 1, Math.max(1, a * 2));
     }
 
+    // Silenced parts: dark, with a line through the waveform.
+    for (const [a, b] of p.mutes) {
+      const xa = this.sampleToX(a);
+      const xb = this.sampleToX(b);
+      g.fillStyle = 'rgba(0,0,0,0.55)';
+      g.fillRect(xa, 0, xb - xa, h);
+      g.fillStyle = 'rgba(255,255,255,0.5)';
+      g.fillRect(xa, mid, xb - xa, 1);
+      if (xb - xa > 26) {
+        g.font = '13px system-ui, sans-serif';
+        g.textAlign = 'center';
+        g.textBaseline = 'top';
+        g.fillText('🔇', (xa + xb) / 2, 6);
+        g.textAlign = 'left';
+      }
+    }
+    if (this.selection) {
+      const [xa, xb] = this.selection;
+      g.fillStyle = 'rgba(255,255,255,0.25)';
+      g.fillRect(Math.min(xa, xb), 0, Math.abs(xb - xa), h);
+    }
+
     // Window edges + handles.
     g.fillStyle = '#fff';
     g.fillRect(x0 - 1, 0, 2, h);
@@ -174,6 +260,17 @@ export class TrimEditor {
     g.roundRect(x0 - 5, mid - 16, 10, 32, 5);
     if (p.free) g.roundRect(x1 - 5, mid - 16, 10, 32, 5);
     g.fill();
+
+    // Playhead: what you're hearing right now.
+    const ph = this.playheadSample();
+    if (ph != null) {
+      const x = this.sampleToX(ph);
+      g.fillStyle = '#fff';
+      g.fillRect(x - 1, 0, 2, h);
+      g.beginPath();
+      g.arc(x, h - 6, 4, 0, Math.PI * 2);
+      g.fill();
+    }
 
     g.font = '600 11px system-ui, sans-serif';
     g.fillStyle = 'rgba(255,255,255,0.55)';
@@ -190,5 +287,6 @@ export class TrimEditor {
       b.setAttribute('aria-checked', on);
     }
     $('trimFold').disabled = p.free;
+    $('silenceUndo').disabled = $('silenceClear').disabled = !p.mutes.length;
   }
 }

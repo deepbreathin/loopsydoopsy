@@ -48,12 +48,12 @@ The repo used to build an Android app (APK) as well; that was retired in favour 
 
 | Do this | What happens |
 | --- | --- |
-| Tap an **empty pad** | Records a loop after a **one-bar count-in**: a hand sweeps once round the pad, one tick per beat, and recording starts the moment it reaches the **red mark at the top** (silent unless you switch on beeps in Settings). With loops playing, the count-in lands on the next bar line, so it's never more than about a bar and a half. The new loop is turned to fit the loops already playing, so it still lines up with them however far round they were. |
+| Tap an **empty pad** | Records a loop after a **one-bar count-in**: a hand sweeps once round the pad, one tick per beat, and recording starts the moment it reaches the **red mark at the top** (silent unless you switch on beeps in Settings). With loops playing, it starts **together with them**: it waits (the pad says "starts with the loops") until they come round to the top, or for a shorter loop the next point they line up with it, and the hand only sweeps for the last bar. |
 | Watch the **ring** while recording | It fills **red** as you record, with beat ticks round the edge. In the **last bar it turns white** and counts down "finish in 3·2·1", so you know when to stop. |
 | Tap a pad **while it's recording** | Finishes early, at the next 1, 2 or 4 bar mark, so it still lines up. |
 | Tap a **loop pad** | Switches it on or off. A loop always starts **from its beginning**, timed to come in when the other loops come round; the pad says "in 3" while it waits. |
 | Tap a **one-shot pad** | Plays the sound once, straight away (Keezy style). Tap fast to stutter. |
-| **Hold** a pad | Options: Loop / One-shot, volume, **Trim**, re-record, clear (with undo), **Send this sound** (a WAV that remembers its tempo and length) and **Load a sound file**. Holding an empty pad lets you load a sound into it. |
+| **⚙** on a pad (top left) | Options: Loop / One-shot, **volume**, **Trim & silence**, re-record, clear (with undo), **Send this sound** (a WAV that remembers its tempo and length) and **Load a sound file**. On an empty pad it lets you load a sound into it. Holding a pad still works as a shortcut. |
 | **▶ / ■** | Starts or stops everything. Loops you've switched on start together from the top. |
 | **Next loop: 1 · 2 · 4 · 8 bars** | Sets the length of the next recording. |
 | **● Rec** (top bar) | Records **just the pads**, with no mic and so no echo. Bring loops in and out while it runs, then tap Rec again to save the take. |
@@ -69,21 +69,26 @@ The repo used to build an Android app (APK) as well; that was retired in favour 
 
 The slim strip on the right of each pad shows **pitch**: a dot that jumps up for high notes and down for low ones as the loop plays, leaving a short trail. On bigger screens it names the note too (A3, C4…). It works out each loop's melody when you record it, and follows the mic live while you record, so you can see where each layer sits and spread them out (low, middle, high).
 
-### Trim
+### Trim & silence (⚙ → Trim & silence)
 
-Every recording also keeps half a bar from **before** you started and a bar from **after** you finished. The trim editor shows the whole take with the loop window highlighted over it:
+The pad **keeps playing in time with your other loops** while you trim, with a playhead in the editor, so you hear each change from the next bar. Every recording also keeps half a bar from **before** you started and a bar from **after** you finished. The trim editor shows the whole take with the loop window highlighted over it:
 
 - **Drag the window** to slide the loop earlier or later. It snaps to 1/16 notes, and the ‹ › buttons nudge it by 10 ms. If you came in a little early, or a little late, slide the window to fix it.
 - **Overrun is cut off** automatically, so the loop always stays exactly the length you chose. If you'd rather keep a held note ringing across the seam, tick **"Wrap overrun into the start"** to fold the tail back onto the beginning of the loop, fading out.
 - **Length**: choose 1, 2, 4 or 8 bars, or **Free** for a one-shot of any length. A free-length pad can't loop, because it wouldn't stay in time.
-- Changes are heard live, from the next bar. **Cancel** puts everything back the way it was.
+- **Silence a part:** switch to "🔇 Silence a part" and drag across a breath, click or cough. It goes quiet (with tiny fades so it doesn't click) and the loop stays the same length. Undo last silence / Clear all silences take it back.
+- **Cancel** puts everything back the way it was.
+
+### Microphones, headphones and delay
+
+Tempo & settings → **Microphone** lets you choose which mic records (the list appears once the app has been allowed to use one). With Bluetooth headphones, the phone's own mic usually sounds better: a headset mic often drops into a muffled "phone call" mode. Every device has some delay between the speaker and the mic, which the app corrects for (Settings → Calibrate measures it). **Bluetooth headphones add more** (often around 200 ms, varying between headphones), so with them recordings can land late: wired headphones are best, or set Latency to about 200 ms and fine-tune with Trim.
 
 ### Making music with someone else
 
 There's no account or server: you pass files back and forth.
 
 - **A whole soundboard:** Soundboards → **Back up / send** makes one `.loopsy` file. Your friend opens it with **Open a backup**, adds their layers, and sends theirs back.
-- **One sound:** hold a pad → **Send this sound**. It's an ordinary WAV, with the tempo and length tucked inside it. Loaded onto a pad (hold an empty pad → **Load a sound file**), it lands on the grid as a loop of the right length; an empty soundboard takes on its tempo. Voice memos, MP3s and other audio load too: as a loop if they're a whole 1, 2, 4 or 8 bars at your tempo, otherwise as a one-shot you can trim.
+- **One sound:** a pad's ⚙ → **Send this sound**. It's an ordinary WAV, with the tempo and length tucked inside it. Loaded onto a pad (⚙ on an empty pad → **Load a sound file**), it lands on the grid as a loop of the right length; an empty soundboard takes on its tempo. Voice memos, MP3s and other audio load too: as a loop if they're a whole 1, 2, 4 or 8 bars at your tempo, otherwise as a one-shot you can trim.
 
 ## Research & design notes
 

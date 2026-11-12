@@ -1,4 +1,4 @@
-import { barDur, beatDur, findOnset, median, mod, nextBoundary, peaks, phaseAt, renderLoop, rotate } from './timing.js';
+import { applyMutes, barDur, beatDur, findOnset, median, mod, nextBoundary, peaks, phaseAt, renderLoop, rotate } from './timing.js';
 import { blockPitch, pitchRange, pitchTrack } from './pitch.js';
 
 export const PAD_COUNT = 8;
@@ -22,6 +22,7 @@ class Pad {
     this.free = false; // free-length (one-shot only), not locked to the grid
     this.fold = false; // wrap the overrun tail back onto the start of the loop
     this.startBar = 0; // bar of the loop grid the take began on (the loop is turned so it stays in place)
+    this.mutes = []; // silenced parts of the capture: [from, to) sample ranges in `raw`
     this.raw = null; // full capture: pre-roll + take + overrun
     this.sampleRate = 0;
     this.trimStart = 0; // samples into raw where the loop starts
@@ -132,14 +133,21 @@ export class Engine extends EventTarget {
   async ensureMic() {
     await this.init();
     if (this.mic) return this.mic;
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: !!this.settings.echoCancel,
-        noiseSuppression: false,
-        autoGainControl: false,
-        channelCount: 1,
-      },
-    });
+    const audio = {
+      echoCancellation: !!this.settings.echoCancel,
+      noiseSuppression: false,
+      autoGainControl: false,
+      channelCount: 1,
+    };
+    // The microphone chosen in Settings (kept per device, not in soundboards); if it has been
+    // unplugged or switched off, fall back to the default one.
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: this.micId ? { ...audio, deviceId: { exact: this.micId } } : audio });
+    } catch (e) {
+      if (!this.micId || e.name === 'NotAllowedError') throw e;
+      stream = await navigator.mediaDevices.getUserMedia({ audio });
+    }
     const ctx = this.ctx;
     const src = ctx.createMediaStreamSource(stream);
     // Mic boost: humming is quiet, so allow up to +12 dB before anything is captured.
@@ -403,9 +411,11 @@ export class Engine extends EventTarget {
       start = now + 0.1 + lead;
       this.origin = start;
     } else {
-      // Just one bar's count-in, landing on the next bar line so it stays in time. The take
-      // doesn't have to start where the loops do: it's turned to fit them afterwards.
-      start = nextBoundary(now + Math.max(0.15, lead * 0.75), this.origin, bar);
+      // Start where the loops do: at the top of the playing loops (or, for a shorter take, at
+      // the next point they line up with it), so new layers begin together with the old ones.
+      // The pad only counts in for the last bar; before that it just waits.
+      const unit = Math.min(bars, this.cycleBars(playing)) * bar;
+      start = nextBoundary(now + Math.max(0.15, lead * 0.75), this.origin, unit);
     }
     pad.reset();
     pad.bars = bars;
@@ -514,7 +524,8 @@ export class Engine extends EventTarget {
   rebuild(pad) {
     if (!pad.raw) return;
     const sr = pad.sampleRate;
-    let data = renderLoop(pad.raw, pad.trimStart, pad.lengthSamples, {
+    const src = pad.mutes?.length ? applyMutes(pad.raw, pad.mutes, Math.round(EDGE_FADE * sr)) : pad.raw;
+    let data = renderLoop(src, pad.trimStart, pad.lengthSamples, {
       fade: Math.round(EDGE_FADE * sr),
       fold: pad.fold && !pad.free ? Math.round(Math.min(this.bar / 2, 1.5) * sr) : 0,
     });
@@ -692,6 +703,7 @@ export class Engine extends EventTarget {
       free: pad.free,
       fold: pad.fold,
       startBar: pad.startBar,
+      mutes: pad.mutes.map((m) => [...m]),
       raw: pad.raw,
       sampleRate: pad.sampleRate,
       trimStart: pad.trimStart,
@@ -705,6 +717,7 @@ export class Engine extends EventTarget {
     pad.reset();
     const { anchorBars, gridBar, ...rest } = s; // fields from older saves
     Object.assign(pad, rest);
+    pad.mutes = (rest.mutes || []).map((m) => [...m]);
     if (pad.gain) pad.gain.gain.value = pad.volume;
     if (pad.raw) {
       pad.state = 'ready';

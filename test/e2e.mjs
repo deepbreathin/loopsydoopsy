@@ -107,11 +107,26 @@ try {
   await page.mouse.move(cb.x + cb.width / 2 + 30, cb.y + cb.height / 2, { steps: 5 });
   await page.mouse.up();
   assert.ok((await ev(() => loopsy.engine.pads[1].trimStart - loopsy.engine.pads[1].defaultStart)) > 0, 'trim window moves');
+  assert.ok(await ev(() => !!loopsy.engine.pads[1].source), 'the pad plays while you trim');
   await page.screenshot({ path: shots + '5-trim.png' });
+  // Silence a part: drag across it; the loop keeps its length.
+  const lenBefore = await ev(() => loopsy.engine.pads[1].buffer.length);
+  await page.click('#trimMode [data-mode="silence"]');
+  await page.mouse.move(cb.x + cb.width * 0.4, cb.y + cb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(cb.x + cb.width * 0.55, cb.y + cb.height / 2, { steps: 5 });
+  await page.mouse.up();
+  const muted = await ev(() => {
+    const p = loopsy.engine.pads[1];
+    return { n: p.mutes.length, len: p.buffer.length };
+  });
+  assert.deepEqual(muted, { n: 1, len: lenBefore }, 'a part is silenced and the length is unchanged');
+  await sleep(200);
+  await page.screenshot({ path: shots + '5c-silence.png' });
   await page.click('#trimSheet .primary');
 
-  // Record pad 3 while loops play, tapping mid-way through the loop cycle: the count-in is
-  // still just one bar (not "wait for the loops"), and the take is turned to stay in sync.
+  // Record pad 3 while loops play, tapping mid-way through the loop cycle: it waits for the
+  // loops to come round, so it starts exactly at the top, together with them.
   await until(() => {
     const e = loopsy.engine;
     const ph = (((e.now - e.origin) % (2 * e.bar)) + 2 * e.bar) % (2 * e.bar);
@@ -121,7 +136,8 @@ try {
   await pads.nth(2).click();
   await until(() => loopsy.engine.pads[2].state === 'armed');
   const lead = await ev((t) => (loopsy.engine.pads[2].rec.start - t) / loopsy.engine.bar, tapAt);
-  assert.ok(lead > 0.7 && lead <= 1.8, `count-in is about one bar (${lead.toFixed(2)} bars)`);
+  assert.ok(lead > 0.7 && lead <= 2.05, `waits for the top of the 2-bar loop (${lead.toFixed(2)} bars)`);
+  await page.screenshot({ path: shots + '5a-waiting-for-top.png' });
   await until(() => loopsy.engine.pads[2].state === 'armed' && loopsy.engine.pads[2].rec.start - loopsy.engine.now < loopsy.engine.bar * 0.5);
   await page.screenshot({ path: shots + '5b-count-in-hand.png' });
   await until(() => loopsy.engine.pads[2].state === 'ready' && loopsy.engine.pads[2].source, null, 9000);
@@ -131,17 +147,11 @@ try {
     const ph = (((c.playFrom - b.playFrom) % len) + len) % len;
     return { startBar: c.startBar, sync: Math.min(ph, len - ph) };
   });
-  assert.equal(turned.startBar % 2, 1, 'take began on the second bar of the cycle');
-  assert.ok(turned.sync < 1e-6, 'and its beginning still lines up with the other loops');
+  assert.equal(turned.startBar % 2, 0, 'take began at the top of the loop cycle');
+  assert.ok(turned.sync < 1e-6, 'and its beginning lines up with the other loops');
 
   // Send pad 2's sound as a file, then load it onto pad 3: it comes back as a 2-bar loop.
-  const longPress = async (i) => {
-    const b = await pads.nth(i).boundingBox();
-    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
-    await page.mouse.down();
-    await sleep(650);
-    await page.mouse.up();
-  };
+  const longPress = (i) => pads.nth(i).locator('.cog').click(); // the ⚙ opens a pad's options
   await longPress(1);
   const [padWav] = await Promise.all([page.waitForEvent('download'), page.click('#padSend')]);
   const padPath = shots + 'pad.wav';

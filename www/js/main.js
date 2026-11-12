@@ -90,8 +90,16 @@ function buildPads() {
     const el = document.createElement('div');
     el.className = 'pad';
     el.style.setProperty('--c', `var(--p${i})`);
-    el.innerHTML = `<canvas></canvas><span class="num">${i + 1}</span>`;
+    el.innerHTML = `<canvas></canvas><button type="button" class="cog" aria-label="Pad ${i + 1} settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/><circle cx="12" cy="12" r="6.2"/></svg></button><span class="num">${i + 1}</span>`;
     grid.append(el);
+    // The cog opens the pad's settings: a tap or click, so it works the same on phones and computers.
+    const cog = el.querySelector('.cog');
+    for (const ev of ['pointerdown', 'pointerup', 'pointercancel']) cog.addEventListener(ev, (e) => e.stopPropagation());
+    cog.addEventListener('click', (e) => {
+      e.stopPropagation();
+      engine.init();
+      if (engine.pads[i].state === 'ready' || engine.pads[i].state === 'empty') openPadSheet(engine.pads[i]);
+    });
     const canvas = el.querySelector('canvas');
     padEls.push({ el, canvas, g: canvas.getContext('2d'), w: 0, h: 0 });
     bindPad(el, engine.pads[i]);
@@ -198,6 +206,7 @@ function openPadSheet(pad) {
   sheetPad = pad;
   $('padTitle').textContent = `Pad ${pad.index + 1}`;
   $('padVol').value = pad.volume;
+  showVol();
   const empty = !pad.hasSound;
   $('padSheet').classList.toggle('empty', empty);
   $('padEmptyNote').hidden = !empty;
@@ -217,8 +226,10 @@ $('modeSeg').addEventListener('click', (e) => {
   syncModeSeg();
   save();
 });
+const showVol = () => ($('padVolVal').textContent = `${Math.round(sheetPad.volume * 100)}%`);
 $('padVol').oninput = (e) => {
   engine.setVolume(sheetPad, Number(e.target.value));
+  showVol();
   save();
 };
 $('padTrim').onclick = () => {
@@ -303,7 +314,7 @@ async function loadPadFile(pad, file) {
     ? `Loaded onto pad ${pad.index + 1} as a ${plural(bars, 'bar')} loop`
     : m && !sameTempo
       ? `Loaded as a one-shot: it was made at ${fmtBpm(m.bpm)} bpm, this board is ${fmtBpm(settings.bpm)}`
-      : `Loaded as a one-shot. Hold the pad → Trim to make it a loop`;
+      : `Loaded as a one-shot. ⚙ → Trim to make it a loop`;
   toast(msg, undo && 'Undo', undo);
 }
 
@@ -579,7 +590,47 @@ const checks = {
   setMonitor: 'monitor',
 };
 
+// Microphone choice is kept on this device (device ids mean nothing on another one).
+const MIC_KEY = 'micId';
+try {
+  engine.micId = localStorage.getItem(MIC_KEY) || '';
+} catch {
+  engine.micId = '';
+}
+
+async function listMics() {
+  const sel = $('setMic');
+  let mics = [];
+  try {
+    mics = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default');
+  } catch {
+    /* not available */
+  }
+  sel.innerHTML = '<option value="">Default</option>';
+  mics.forEach((d, i) => {
+    const o = document.createElement('option');
+    o.value = d.deviceId;
+    o.textContent = d.label || `Microphone ${i + 1}`;
+    sel.append(o);
+  });
+  sel.value = mics.some((d) => d.deviceId === engine.micId) ? engine.micId : '';
+  // Browsers only name the mics once the app has been allowed to use one.
+  sel.disabled = !mics.some((d) => d.label);
+  if (sel.disabled) sel.options[0].textContent = 'Default (record something first to choose)';
+}
+$('setMic').onchange = async (e) => {
+  engine.micId = e.target.value;
+  try {
+    localStorage.setItem(MIC_KEY, engine.micId);
+  } catch {
+    /* storage blocked */
+  }
+  await engine.reopenMic().catch(micError);
+};
+navigator.mediaDevices?.addEventListener?.('devicechange', () => $('settingsSheet').open && listMics());
+
 function openSettings() {
+  listMics();
   $('bpmInput').value = settings.bpm;
   $('bpbInput').value = settings.beatsPerBar;
   $('latInput').value = settings.latencyMs ?? '';
@@ -801,7 +852,7 @@ function hintText(t) {
   const armed = pads.find((p) => p.state === 'armed');
   if (armed) {
     return armed.rec.start - t > engine.bar
-      ? 'Get ready… the count-in starts on the next bar. Tap the pad to cancel.'
+      ? 'Waiting for the loops to come round to the top, then a one-bar count-in. Tap the pad to cancel.'
       : 'Counting in… start when the hand reaches the top. Tap the pad to cancel.';
   }
   if (pads.some((p) => p.state === 'recording')) return 'Recording — the ring turns white in the last bar. Tap to finish early.';
@@ -816,8 +867,8 @@ function hintText(t) {
       : 'Recording the pads · Rec stops & saves · Sing adds your voice';
   }
   if (pads.some((p) => p.pending?.type === 'start')) return 'Coming in from the top when the loops come round';
-  if (!pads.some((p) => p.hasSound)) return 'Tap an empty pad to record · tap to play · hold for options';
-  return 'Tap to play · hold a pad for options · Rec records what you play';
+  if (!pads.some((p) => p.hasSound)) return 'Tap an empty pad to record · tap to play · ⚙ for options';
+  return 'Tap to play · ⚙ for a pad’s options · Rec records what you play';
 }
 
 // Pitch for a pad's strip: from its pitch contour while it plays, or the mic while it records.
@@ -873,6 +924,7 @@ function frame() {
       // The count-in is one bar: the hand sweeps round it and recording starts at the top.
       const toGo = start - t;
       v.countFrac = toGo > bar ? null : Math.min(1, Math.max(0, 1 - toGo / bar));
+      v.waitBars = Math.max(1, Math.ceil(toGo / bar - 1e-3) - 1);
       v.countdown = Math.max(1, Math.ceil(toGo / beat - 1e-3));
       if (pad.state === 'armed') v.beats = bpb;
       v.recFrac = (t - start) / (end - start);

@@ -76,8 +76,15 @@ The pad **keeps playing in time with your other loops** while you trim, with a p
 - **Drag the window** to slide the loop earlier or later. It snaps to 1/16 notes, and the ‹ › buttons nudge it by 10 ms. If you came in a little early, or a little late, slide the window to fix it.
 - **Overrun is cut off** automatically, so the loop always stays exactly the length you chose. If you'd rather keep a held note ringing across the seam, tick **"Wrap overrun into the start"** to fold the tail back onto the beginning of the loop, fading out.
 - **Length**: choose 1, 2, 4 or 8 bars, or **Free** for a one-shot of any length. A free-length pad can't loop, because it wouldn't stay in time.
-- **Silence a part:** switch to "🔇 Silence a part" and drag across a breath, click or cough. It goes quiet (with tiny fades so it doesn't click) and the loop stays the same length. Undo last silence / Clear all silences take it back.
+- **Move a part:** switch to "✋ Move a part", drag across a note or word to select it, then drag the selection to move just that bit (‹ › nudge it by 10 ms). Where it came from goes quiet; the loop stays the same length.
+- **Silence:** drag across a breath, click or cough. It goes quiet (with tiny fades so it doesn't click) and the loop stays the same length.
+- **Compare with** another pad: its sound is drawn above the line and this pad's below, lined up as they play together, so you can see where notes should meet.
+- **Undo last change / Undo all changes** take back moves and silences.
 - **Cancel** puts everything back the way it was.
+
+### Updates
+
+The app checks for a new version whenever it's opened or brought back to the front, and switches to it straight away if nothing's playing (otherwise it offers an **Update** button). It always loads the newest files when online, and the saved copy when offline.
 
 ### Microphones, headphones and delay
 

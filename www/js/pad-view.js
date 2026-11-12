@@ -5,6 +5,7 @@
 import { isNatural, midiName } from './pitch.js';
 
 const TAU = Math.PI * 2;
+const WAVE_GAIN = 2.5;
 const angle = (f) => -Math.PI / 2 + f * TAU;
 
 export function drawPad(g, w, h, pad, v) {
@@ -55,8 +56,11 @@ export function drawPad(g, w, h, pad, v) {
 
   if (wave) {
     const fill = s === 'ready' ? (phase != null ? 0.24 : 0.2) : 0.35;
-    drawWave(g, cx, cy, r0, R * 0.38, R * 0.24, wave, 0, 1, ink + fill + ')');
-    if (phase != null) drawWave(g, cx, cy, r0, R * 0.38, R * 0.24, wave, 0, phase, ink + '0.5)');
+    // Real size: what was recorded, scaled by the pad's volume, the same while recording
+    // and after. (A little display gain so quiet humming still shows.)
+    const gain = WAVE_GAIN * (v.volume ?? 1);
+    drawWave(g, cx, cy, r0, R * 0.38, R * 0.24, wave, 0, 1, ink + fill + ')', gain);
+    if (phase != null) drawWave(g, cx, cy, r0, R * 0.38, R * 0.24, wave, 0, phase, ink + '0.5)', gain);
   }
 
   if (s === 'armed') {
@@ -209,7 +213,7 @@ function head(g, cx, cy, R, inner, f, color, lw) {
 }
 
 // Radial waveform between fractions [f0, f1] of the loop: a ring that bulges with loudness.
-function drawWave(g, cx, cy, r0, outAmp, inAmp, wave, f0, f1, color) {
+function drawWave(g, cx, cy, r0, outAmp, inAmp, wave, f0, f1, color, gain = 1) {
   const n = wave.length;
   const i0 = Math.floor(f0 * n);
   const i1 = Math.max(i0 + 1, Math.ceil(f1 * n));
@@ -221,12 +225,12 @@ function drawWave(g, cx, cy, r0, outAmp, inAmp, wave, f0, f1, color) {
     return [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
   };
   for (let i = i0; i <= Math.min(i1, n); i++) {
-    const amp = Math.sqrt(wave[Math.min(i, n - 1)]);
+    const amp = Math.sqrt(Math.min(1, wave[Math.min(i, n - 1)] * gain));
     const [x, y] = pt(i === i1 ? f1 * n : i, r0 + amp * outAmp + 1);
     i === i0 ? g.moveTo(x, y) : g.lineTo(x, y);
   }
   for (let i = Math.min(i1, n); i >= i0; i--) {
-    const amp = Math.sqrt(wave[Math.min(i, n - 1)]);
+    const amp = Math.sqrt(Math.min(1, wave[Math.min(i, n - 1)] * gain));
     const [x, y] = pt(i === i1 ? f1 * n : i, r0 - amp * inAmp - 1);
     g.lineTo(x, y);
   }

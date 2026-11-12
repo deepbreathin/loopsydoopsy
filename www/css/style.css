@@ -477,7 +477,7 @@ select:disabled,
 
 #trimCanvas {
   width: 100%;
-  height: 150px;
+  height: 170px;
   border-radius: 14px;
   background: var(--bg);
   touch-action: none;

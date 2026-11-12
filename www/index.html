@@ -98,13 +98,15 @@
         <h2>Trim <small id="trimInfo"></small></h2>
         <p class="sub" id="trimHelp"></p>
         <div class="seg tabs" id="trimMode">
-          <button type="button" data-mode="move">↔ Move into time</button>
-          <button type="button" data-mode="silence">🔇 Silence a part</button>
+          <button type="button" data-mode="move">↔ Whole loop</button>
+          <button type="button" data-mode="part">✋ Move a part</button>
+          <button type="button" data-mode="silence">🔇 Silence</button>
         </div>
+        <label class="row" id="trimCompareRow">Compare with <select id="trimCompare"></select></label>
         <canvas id="trimCanvas"></canvas>
         <div class="actions" id="silenceRow" hidden>
-          <button type="button" id="silenceUndo">↶ Undo last silence</button>
-          <button type="button" id="silenceClear">Clear all silences</button>
+          <button type="button" id="silenceUndo">↶ Undo last change</button>
+          <button type="button" id="silenceClear">Undo all changes</button>
         </div>
         <div class="trim-row">
           <button type="button" id="nudgeL" aria-label="10 ms earlier">‹</button>

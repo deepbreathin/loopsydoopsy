@@ -98,6 +98,37 @@ export function applyMutes(raw, ranges, fade = 0) {
   return out;
 }
 
+// Apply a pad's edits to its capture, in order, without changing its length:
+//   { type: 'mute', a, b }          silence samples [a, b)
+//   { type: 'move', a, b, shift }   lift [a, b) out (leaving silence) and put it back
+//                                   `shift` samples later (earlier if negative), mixed in
+// Edges fade over `fade` samples so nothing clicks.
+export function applyEdits(raw, edits, fade = 0) {
+  let out = raw;
+  for (const ed of edits || []) {
+    const a = Math.max(0, Math.min(ed.a, ed.b));
+    const b = Math.min(raw.length, Math.max(ed.a, ed.b));
+    if (b <= a) continue;
+    if (ed.type === 'mute') {
+      out = applyMutes(out, [[a, b]], fade);
+    } else if (ed.type === 'move') {
+      const seg = out.slice(a, b);
+      const f = Math.min(fade, Math.floor(seg.length / 2));
+      for (let i = 0; i < f; i++) {
+        seg[i] *= i / f;
+        seg[seg.length - 1 - i] *= i / f;
+      }
+      out = applyMutes(out, [[a, b]], fade);
+      const to = a + Math.round(ed.shift);
+      for (let i = 0; i < seg.length; i++) {
+        const j = to + i;
+        if (j >= 0 && j < out.length) out[j] += seg[i];
+      }
+    }
+  }
+  return out === raw ? new Float32Array(raw) : out;
+}
+
 // Where a buffer position (sample index into a rendered loop) came from in the raw capture,
 // undoing the turn applied to takes that began partway through the loop cycle.
 export const rawIndex = (i, trimStart, length, shift) => trimStart + mod(i - shift, length);

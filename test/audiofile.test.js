@@ -56,3 +56,16 @@ test('silencing a part keeps the length and fades the edges', async () => {
   assert.equal(rawIndex(0, 100, 10, 3), 107);
   assert.equal(rawIndex(3, 100, 10, 3), 100);
 });
+
+test('moving a part lifts it out and puts it back later, same length', async () => {
+  const { applyEdits } = await import('../www/js/timing.js');
+  const raw = new Float32Array(20);
+  raw[5] = 1; // a "note" at sample 5
+  const out = applyEdits(raw, [{ type: 'move', a: 4, b: 7, shift: 3 }]);
+  assert.equal(out.length, 20);
+  assert.equal(out[5], 0, 'gone from where it was');
+  assert.equal(out[8], 1, 'and now 3 samples later');
+  assert.equal(raw[5], 1, 'the original capture is untouched');
+  const both = applyEdits(raw, [{ type: 'mute', a: 0, b: 3 }, { type: 'move', a: 4, b: 7, shift: -2 }]);
+  assert.equal(both[3], 1);
+});

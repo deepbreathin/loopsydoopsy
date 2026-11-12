@@ -927,6 +927,7 @@ function frame() {
       bars,
       beats: pad.free ? 0 : bars * bpb,
       mode: pad.mode,
+      volume: pad.volume,
       enabled: pad.enabled,
       pending: pad.pending?.type,
       time: t,
@@ -1051,7 +1052,24 @@ document.addEventListener('pointerdown', () => engine.init(), { once: true, capt
 
 // Offline support (and what makes it installable).
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker
+    .register('sw.js')
+    .then((reg) => {
+      // An installed app is often resumed rather than reopened, so look for updates then too.
+      document.addEventListener('visibilitychange', () => !document.hidden && reg.update().catch(() => {}));
+    })
+    .catch(() => {});
+  // A new version has taken over: reload into it now if nothing's going on, else offer to.
+  const hadController = !!navigator.serviceWorker.controller;
+  let updating = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || updating) return;
+    updating = true;
+    const busy =
+      engine.running || engine.session || engine.pads.some((p) => p.state === 'armed' || p.state === 'recording' || p.state === 'processing') || document.querySelector('dialog[open]');
+    if (busy) toast('A new version of Loopsy Doopsy is ready', 'Update', () => projects.flush().then(() => location.reload()));
+    else projects.flush().then(() => location.reload());
+  });
 }
 
 window.loopsy = { engine, settings, projects, getSong: () => song, setSong: (s) => (song = s) }; // handy for debugging

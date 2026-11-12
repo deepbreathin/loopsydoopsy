@@ -1,4 +1,4 @@
-import { applyMutes, barDur, beatDur, findOnset, median, mod, nextBoundary, peaks, phaseAt, renderLoop, rotate } from './timing.js';
+import { applyEdits, barDur, beatDur, findOnset, median, mod, nextBoundary, peaks, phaseAt, renderLoop, rotate } from './timing.js';
 import { blockPitch, pitchRange, pitchTrack } from './pitch.js';
 
 export const PAD_COUNT = 8;
@@ -22,7 +22,7 @@ class Pad {
     this.free = false; // free-length (one-shot only), not locked to the grid
     this.fold = false; // wrap the overrun tail back onto the start of the loop
     this.startBar = 0; // bar of the loop grid the take began on (the loop is turned so it stays in place)
-    this.mutes = []; // silenced parts of the capture: [from, to) sample ranges in `raw`
+    this.edits = []; // silenced / moved parts of the capture, in `raw` samples (see applyEdits)
     this.raw = null; // full capture: pre-roll + take + overrun
     this.sampleRate = 0;
     this.trimStart = 0; // samples into raw where the loop starts
@@ -524,7 +524,7 @@ export class Engine extends EventTarget {
   rebuild(pad) {
     if (!pad.raw) return;
     const sr = pad.sampleRate;
-    const src = pad.mutes?.length ? applyMutes(pad.raw, pad.mutes, Math.round(EDGE_FADE * sr)) : pad.raw;
+    const src = pad.edits?.length ? this.editedRaw(pad) : pad.raw;
     let data = renderLoop(src, pad.trimStart, pad.lengthSamples, {
       fade: Math.round(EDGE_FADE * sr),
       fold: pad.fold && !pad.free ? Math.round(Math.min(this.bar / 2, 1.5) * sr) : 0,
@@ -538,10 +538,9 @@ export class Engine extends EventTarget {
       buf.copyToChannel(data, 0);
       pad.buffer = buf;
     }
-    const p = peaks(data, PEAK_BINS);
-    let max = 0.05;
-    for (const v of p) max = Math.max(max, v);
-    pad.peaks = p.map((v) => v / max);
+    // Real loudness (not stretched to fill the pad), the same scale as the live view while
+    // recording; the pad's volume is applied when it's drawn.
+    pad.peaks = peaks(data, PEAK_BINS);
     // Pitch contour for the pitch strip; a little heavier, so off the critical path.
     clearTimeout(pad.pitchTimer);
     pad.pitchTimer = setTimeout(() => {
@@ -549,6 +548,11 @@ export class Engine extends EventTarget {
       pad.pitchRange = pitchRange(pad.pitchTrack);
     }, 30);
     if (pad.state === 'empty') pad.state = 'ready';
+  }
+
+  // The capture with its silences and moved parts applied.
+  editedRaw(pad) {
+    return applyEdits(pad.raw, pad.edits, Math.round(EDGE_FADE * pad.sampleRate));
   }
 
   // Re-render after a trim/fold change and swap it in at the next bar without a gap.
@@ -703,7 +707,7 @@ export class Engine extends EventTarget {
       free: pad.free,
       fold: pad.fold,
       startBar: pad.startBar,
-      mutes: pad.mutes.map((m) => [...m]),
+      edits: pad.edits.map((e) => ({ ...e })),
       raw: pad.raw,
       sampleRate: pad.sampleRate,
       trimStart: pad.trimStart,
@@ -717,7 +721,9 @@ export class Engine extends EventTarget {
     pad.reset();
     const { anchorBars, gridBar, ...rest } = s; // fields from older saves
     Object.assign(pad, rest);
-    pad.mutes = (rest.mutes || []).map((m) => [...m]);
+    // (Silences from before edits existed were saved as `mutes`.)
+    pad.edits = (rest.edits || (rest.mutes || []).map(([a, b]) => ({ type: 'mute', a, b }))).map((e) => ({ ...e }));
+    delete pad.mutes;
     if (pad.gain) pad.gain.gain.value = pad.volume;
     if (pad.raw) {
       pad.state = 'ready';

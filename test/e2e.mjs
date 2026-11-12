@@ -118,11 +118,33 @@ try {
   await page.mouse.up();
   const muted = await ev(() => {
     const p = loopsy.engine.pads[1];
-    return { n: p.mutes.length, len: p.buffer.length };
+    return { kinds: p.edits.map((e) => e.type), len: p.buffer.length };
   });
-  assert.deepEqual(muted, { n: 1, len: lenBefore }, 'a part is silenced and the length is unchanged');
+  assert.deepEqual(muted, { kinds: ['mute'], len: lenBefore }, 'a part is silenced and the length is unchanged');
   await sleep(200);
   await page.screenshot({ path: shots + '5c-silence.png' });
+  // Move a part: select a bit, then drag the selection along. Compare with pad 1 meanwhile.
+  await page.selectOption('#trimCompare', '0');
+  await page.click('#trimMode [data-mode="part"]');
+  const y = cb.y + cb.height / 2;
+  await page.mouse.move(cb.x + cb.width * 0.62, y);
+  await page.mouse.down();
+  await page.mouse.move(cb.x + cb.width * 0.7, y, { steps: 4 });
+  await page.mouse.up();
+  await page.mouse.move(cb.x + cb.width * 0.66, y);
+  await page.mouse.down();
+  await page.mouse.move(cb.x + cb.width * 0.69, y, { steps: 4 });
+  await page.mouse.up();
+  const moved = await ev(() => {
+    const p = loopsy.engine.pads[1];
+    const m = p.edits.at(-1);
+    return { type: m.type, later: m.shift > 0, len: p.buffer.length };
+  });
+  assert.deepEqual(moved, { type: 'move', later: true, len: lenBefore }, 'a selected part moves later, length unchanged');
+  await sleep(200);
+  await page.screenshot({ path: shots + '5d-move-part-compare.png' });
+  await page.click('#silenceUndo');
+  assert.equal(await ev(() => loopsy.engine.pads[1].edits.length), 1, 'undo takes back the last change');
   await page.click('#trimSheet .primary');
 
   // Record pad 3 while loops play, tapping mid-way through the loop cycle: it waits for the

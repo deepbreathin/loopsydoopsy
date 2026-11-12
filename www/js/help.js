@@ -4,7 +4,7 @@
 // Paste the form's "pre-filled link" here (Google Form with one Paragraph question →
 // ⋮ → Get pre-filled link → type anything → Get link → Copy link). Until then, Send opens
 // a pre-filled GitHub issue instead.
-export const FEEDBACK_FORM_LINK = '';
+export const FEEDBACK_FORM_LINK = 'https://docs.google.com/forms/d/e/1FAIpQLScPXaJXo8Fu12gVzJS1PZayOXg5H12JXf3oEtvrjMGAwvu8_w/viewform?usp=pp_url&entry.942833866=example';
 
 const GITHUB_REPO = 'deepbreathin/loopsydoopsy';
 const APP_VERSION = '2026.11';

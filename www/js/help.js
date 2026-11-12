@@ -1,7 +1,20 @@
-// The Help & suggestions box: an FAQ you can search, and a way to send an idea or problem
-// report (it opens a pre-filled GitHub issue). No server needed.
+// The FAQ & suggestions box: an FAQ you can search, and a text box for ideas and problem
+// reports. No server of our own: suggestions are posted straight into a Google Form.
+
+// Paste the form's "pre-filled link" here (Google Form with one Paragraph question →
+// ⋮ → Get pre-filled link → type anything → Get link → Copy link). Until then, Send opens
+// a pre-filled GitHub issue instead.
+export const FEEDBACK_FORM_LINK = '';
+
 const GITHUB_REPO = 'deepbreathin/loopsydoopsy';
 const APP_VERSION = '2026.11';
+
+// From a pre-filled link, where to post and which field the text goes in.
+export function formTarget(link) {
+  const m = /docs\.google\.com\/forms\/(?:u\/\d+\/)?d\/e\/([\w-]+)\/viewform\?(?:.*&)?(entry\.\d+)=/.exec(link || '');
+  return m ? { action: `https://docs.google.com/forms/d/e/${m[1]}/formResponse`, field: m[2] } : null;
+}
+const FORM = formTarget(FEEDBACK_FORM_LINK);
 
 const $ = (id) => document.getElementById(id);
 
@@ -112,11 +125,28 @@ export class HelpBox {
     else this.show(q, 'Nothing in the FAQ matches that. Try other words, or ask on the Suggest tab.');
   }
 
-  suggest() {
+  async suggest() {
     const text = $('suggestText').value.trim();
     if (!text) return this.toast('Write something first');
     const kind = $('suggestKind').value;
     const info = $('suggestDevice').checked ? device() : '';
+    if (FORM) {
+      const label = { idea: 'Idea', bug: 'Problem', other: 'Other' }[kind] || 'Other';
+      const body = new URLSearchParams({ [FORM.field]: `[${label}] ${text}\n\n— app ${APP_VERSION}${info ? ` · ${info}` : ''}` });
+      $('sendSuggestion').disabled = true;
+      try {
+        // Google doesn't let other sites read its reply, so "no-cors": it's sent, we just can't see the answer.
+        await fetch(FORM.action, { method: 'POST', mode: 'no-cors', body });
+        $('suggestText').value = '';
+        this.dlg.close();
+        this.toast('Thanks! Sent 💌');
+      } catch {
+        this.toast(navigator.onLine ? 'Couldn’t send — try again in a moment' : 'You’re offline — send it when you’re back online');
+      } finally {
+        $('sendSuggestion').disabled = false;
+      }
+      return;
+    }
     const title = `${{ idea: '💡 Idea', bug: '🐞 Problem', other: '💬' }[kind] || '💬'}: ${text.split('\n')[0].slice(0, 70)}`;
     const body = `${text}\n\n---\nApp version ${APP_VERSION}${info ? `\nDevice: ${info}` : ''}`;
     window.open(`https://github.com/${GITHUB_REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`, '_blank', 'noopener');

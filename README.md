@@ -22,7 +22,9 @@ The first time someone opens it in a browser, the welcome screen says **install 
 
 ### FAQ & suggestions
 
-Menu → **FAQ & suggestions** has a searchable FAQ (in `www/js/help.js`, easy to add to) and a **Suggest** tab for ideas and problem reports, which opens a pre-filled GitHub issue (senders need a free GitHub account). New suggestions show up under the repo's **Issues**.
+Menu → **FAQ & suggestions** has a searchable FAQ (in `www/js/help.js`, easy to add to) and a **Suggest** tab: a text box and a Send button, with nothing to sign up for. Messages go quietly into a Google Form you own, so they collect in your Google account (Responses tab, or a linked Sheet; you can turn on email notifications).
+
+To connect it: make a Google Form with one **Paragraph** question → ⋮ → **Get pre-filled link** → type anything → **Get link** → copy it into `FEEDBACK_FORM_LINK` at the top of `www/js/help.js`. Until that's set, Send opens a pre-filled GitHub issue instead.
 
 ### What it costs to host
 

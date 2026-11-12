@@ -1,4 +1,5 @@
-import { Engine, PAD_COUNT } from './engine.js';
+import { Engine, LOOP_LENGTHS, PAD_COUNT } from './engine.js';
+import { decodeWavBlob, readAudioFile, toMp3 } from './audio-files.js';
 import { drawPad, drawSing } from './pad-view.js';
 import * as layout from './layout.js';
 import { isNative, onBackButton, shareFiles } from './native.js';
@@ -8,7 +9,7 @@ import { SongEditor } from './song.js';
 import { TrimEditor } from './trim.js';
 import * as store from './storage.js';
 import { encodeWav } from './wav.js';
-import { mod, tapTempo } from './timing.js';
+import { fitBars, mod, tapTempo } from './timing.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -139,7 +140,7 @@ function bindPad(el, pad) {
     }
     timer = setTimeout(() => {
       long = true;
-      if (pad.state === 'ready') openPadSheet(pad);
+      if (pad.state === 'ready' || pad.state === 'empty') openPadSheet(pad);
     }, 480);
   });
   const up = (e, cancelled) => {
@@ -196,6 +197,9 @@ function openPadSheet(pad) {
   sheetPad = pad;
   $('padTitle').textContent = `Pad ${pad.index + 1}`;
   $('padVol').value = pad.volume;
+  const empty = !pad.hasSound;
+  $('padSheet').classList.toggle('empty', empty);
+  $('padEmptyNote').hidden = !empty;
   syncModeSeg();
   $('padSheet').showModal();
 }
@@ -233,6 +237,75 @@ $('padRerec').onclick = async () => {
     micError(e);
   }
 };
+// One pad's sound as a WAV, exactly as it loops. The tempo and length ride along inside the
+// file, so another Loopsy Doopsy can drop it straight onto its grid.
+$('padSend').onclick = () => {
+  const pad = sheetPad;
+  if (!pad?.buffer) return;
+  const meta = {
+    app: 'loopsy',
+    v: 1,
+    bpm: settings.bpm,
+    beatsPerBar: settings.beatsPerBar,
+    bars: pad.free ? null : pad.bars,
+    free: pad.free,
+    mode: pad.mode,
+  };
+  const board = (projects.current?.name ?? 'loopsy').replace(/[^\w-]+/g, '-');
+  share([{ blob: encodeWav(pad.buffer.getChannelData(0), pad.buffer.sampleRate, meta), name: `${board}-pad${pad.index + 1}.wav` }], `Pad ${pad.index + 1}`);
+};
+$('padLoad').onclick = () => $('padFile').click();
+$('padFile').onchange = (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  const pad = sheetPad;
+  if (!f || !pad) return;
+  $('padSheet').close();
+  loadPadFile(pad, f);
+};
+
+async function loadPadFile(pad, file) {
+  await engine.init();
+  let a;
+  try {
+    a = await readAudioFile(engine.ctx, file);
+  } catch (e) {
+    console.warn(e);
+    return toast('Couldn’t read that sound file');
+  }
+  if (!a.samples.length) return toast('That sound file is empty');
+  const m = a.meta?.app === 'loopsy' ? a.meta : null;
+  const others = engine.pads.some((p) => p !== pad && p.hasSound);
+  // An empty board takes on the tempo the sound was made at.
+  if (m?.bpm && !others && !engine.running) {
+    settings.bpm = m.bpm;
+    settings.beatsPerBar = m.beatsPerBar || settings.beatsPerBar;
+    syncToggles();
+  }
+  const sameTempo = m && Math.abs(m.bpm - settings.bpm) < 0.05 && m.beatsPerBar === settings.beatsPerBar;
+  const dur = a.samples.length / a.sampleRate;
+  let bars = null;
+  if (m) bars = sameTempo && !m.free ? m.bars : null;
+  else bars = fitBars(dur, engine.bar, LOOP_LENGTHS);
+  const snap = engine.snapshot(pad);
+  const had = pad.hasSound;
+  engine.loadSound(pad, a.samples, a.sampleRate, bars);
+  if (bars && m?.mode === 'oneshot') engine.setMode(pad, 'oneshot');
+  save();
+  const undo = had
+    ? () => {
+        engine.restore(pad, snap);
+        save();
+      }
+    : null;
+  const msg = bars
+    ? `Loaded onto pad ${pad.index + 1} as a ${plural(bars, 'bar')} loop`
+    : m && !sameTempo
+      ? `Loaded as a one-shot: it was made at ${fmtBpm(m.bpm)} bpm, this board is ${fmtBpm(settings.bpm)}`
+      : `Loaded as a one-shot. Hold the pad → Trim to make it a loop`;
+  toast(msg, undo && 'Undo', undo);
+}
+
 $('padClear').onclick = () => {
   const pad = sheetPad;
   $('padSheet').close();
@@ -334,6 +407,10 @@ async function stopTake() {
   await store.saveTake(take);
   refreshTakesCount();
   toast(`Saved “${take.name}”`, 'Open', openTakes);
+  // Make the MP3 now, in the background, so sharing it later is instant.
+  toMp3(result.samples, result.sampleRate)
+    .then((mp3) => store.saveTake({ ...take, mp3 }))
+    .catch((e) => console.warn('mp3', e));
 }
 
 // mode: 'play' | 'record' (the pads) | 'sing' (the pads + your voice)
@@ -360,7 +437,7 @@ $('menuSheet').addEventListener('click', (e) => {
   const what = e.target.closest('button')?.dataset.open;
   if (!what) return;
   $('menuSheet').close();
-  ({ projects: () => projects.show(), song: () => songEditor.open(), help: openHelp, settings: openSettings })[what]();
+  ({ projects: () => projects.show(), song: () => songEditor.open(), help: openHelp, settings: openSettings, install: openInstall })[what]();
 });
 $('tempoBtn').onclick = () => openSettings();
 $('boardName').onclick = () => projects.show();
@@ -375,6 +452,62 @@ $('songBtn').onclick = () => {
 };
 engine.addEventListener('song', () => {
   if ($('songSheet').open) songEditor.render();
+});
+
+// ---------- install (PWA) ----------
+
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault(); // offer it from the menu instead of a browser banner
+  installPrompt = e;
+});
+const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+$('menuInstall').hidden = isNative || standalone;
+
+function deviceKind() {
+  const ua = navigator.userAgent;
+  if (/iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
+  if (/Android/.test(ua)) return 'android';
+  return 'desktop';
+}
+
+function openInstall() {
+  const kind = deviceKind();
+  for (const sec of $('installSheet').querySelectorAll('[data-os]')) sec.hidden = sec.dataset.os !== kind;
+  $('installNowRow').hidden = !installPrompt;
+  $('installSheet').showModal();
+}
+$('installNow').onclick = async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  const { outcome } = await installPrompt.userChoice;
+  installPrompt = null;
+  $('installSheet').close();
+  if (outcome === 'accepted') $('menuInstall').hidden = true;
+};
+
+// ---------- keyboard (computers) ----------
+
+document.addEventListener('keydown', (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+  if (!$('splash').hidden || document.querySelector('dialog[open]')) return;
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName)) return;
+  engine.init();
+  if (e.key >= '1' && e.key <= String(PAD_COUNT)) {
+    const i = Number(e.key) - 1;
+    const pad = engine.pads[i];
+    if (pad.state === 'ready' && pad.mode === 'oneshot') {
+      engine.trigger(pad);
+      flash(padEls[i].el);
+    } else tap(pad, padEls[i].el);
+  } else if (e.key === ' ') {
+    e.preventDefault();
+    document.activeElement?.blur?.();
+    $('playBtn').click();
+  } else if (e.key === 'r' || e.key === 'R') {
+    $('recBtn').click();
+  } else return;
+  e.preventDefault();
 });
 
 function openHelp() {
@@ -547,7 +680,8 @@ async function renderTakes() {
     const d = new Date(t.created);
     li.innerHTML = `<button type="button" data-a="play" aria-label="Play">${playingId === t.id ? ICON.pause : ICON.play}</button>
       <div class="meta"><b></b><small>${fmtTime(t.duration)} · ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small></div>
-      <button type="button" data-a="share" aria-label="Share or save">${ICON.share}</button>
+      <button type="button" data-a="mp3" class="fmt" aria-label="Share or save as MP3">${ICON.share}<small>MP3</small></button>
+      <button type="button" data-a="wav" class="fmt" aria-label="Share or save as WAV"><small>WAV</small></button>
       <button type="button" data-a="del" aria-label="Delete">${ICON.bin}</button>`;
     li.querySelector('b').textContent = t.name;
     li.onclick = async (e) => {
@@ -563,7 +697,9 @@ async function renderTakes() {
           playingId = t.id;
         }
         renderTakes();
-      } else if (a === 'share') {
+      } else if (a === 'mp3') {
+        shareTakeMp3(t);
+      } else if (a === 'wav') {
         shareTake(t);
       } else if (a === 'del') {
         if (playingId === t.id) player.pause();
@@ -581,7 +717,26 @@ async function renderTakes() {
   }
 }
 
-const shareTake = (t) => share([{ blob: t.blob, name: `${t.name.replace(/\W+/g, '-')}.wav` }], t.name);
+const takeFile = (t, ext) => `${t.name.replace(/\W+/g, '-').replace(/^-|-$/g, '')}.${ext}`;
+const shareTake = (t) => share([{ blob: t.blob, name: takeFile(t, 'wav') }], t.name);
+
+async function shareTakeMp3(t) {
+  let mp3 = t.mp3 ?? (await store.getTake(t.id).catch(() => null))?.mp3;
+  if (!mp3) {
+    toast('Making the MP3…');
+    try {
+      await engine.init();
+      const { samples, sampleRate } = await decodeWavBlob(engine.ctx, t.blob);
+      mp3 = await toMp3(samples, sampleRate);
+      await store.saveTake({ ...t, mp3 });
+    } catch (e) {
+      console.warn(e);
+      return toast('Couldn’t make an MP3 — try WAV');
+    }
+  }
+  t.mp3 = mp3;
+  share([{ blob: mp3, name: takeFile(t, 'mp3') }], t.name);
+}
 
 // Android: the share sheet (Drive, WhatsApp, Files…). Browser: share sheet if it can, else download.
 async function share(files, title) {
@@ -600,6 +755,8 @@ async function share(files, title) {
       return;
     } catch (e) {
       if (e.name === 'AbortError') return;
+      // Safari only shares straight after a tap; if getting the file ready took too long, ask for another.
+      if (e.name === 'NotAllowedError') return toast('Ready to send', 'Share', () => share(files, title));
     }
   }
   for (const f of list) {
@@ -619,10 +776,9 @@ function hintText(t) {
   const pads = engine.pads;
   const armed = pads.find((p) => p.state === 'armed');
   if (armed) {
-    const bars = Math.ceil((armed.rec.start - t) / engine.bar - 1e-3);
-    return bars > 1
-      ? `Waiting for the loops to come round — ${plural(bars, 'bar')} to go. Tap to cancel.`
-      : 'Counting in… start when the ring turns red. Tap the pad to cancel.';
+    return armed.rec.start - t > engine.bar
+      ? 'Get ready… the count-in starts on the next bar. Tap the pad to cancel.'
+      : 'Counting in… start when the hand reaches the top. Tap the pad to cancel.';
   }
   if (pads.some((p) => p.state === 'recording')) return 'Recording — the ring turns white in the last bar. Tap to finish early.';
   const sp = engine.songPosition(t);
@@ -690,10 +846,11 @@ function frame() {
     }
     if (pad.rec && (pad.state === 'armed' || pad.state === 'recording' || pad.state === 'processing')) {
       const { start, end } = pad.rec;
-      const beatsToGo = Math.max(1, Math.ceil((start - t) / beat - 1e-3));
-      // Count down in beats for the last bar, in bars before that.
-      v.countdown = beatsToGo > bpb ? Math.ceil(beatsToGo / bpb) : beatsToGo;
-      v.countLabel = beatsToGo > bpb ? 'bars to go' : 'get ready';
+      // The count-in is one bar: the hand sweeps round it and recording starts at the top.
+      const toGo = start - t;
+      v.countFrac = toGo > bar ? null : Math.min(1, Math.max(0, 1 - toGo / bar));
+      v.countdown = Math.max(1, Math.ceil(toGo / beat - 1e-3));
+      if (pad.state === 'armed') v.beats = bpb;
       v.recFrac = (t - start) / (end - start);
       v.lastBar = t >= end - bar;
       v.beatsLeft = Math.max(1, Math.ceil((end - t) / beat - 1e-3));
@@ -759,6 +916,8 @@ document.addEventListener('visibilitychange', () => document.hidden && projects.
 // ---------- boot ----------
 
 buildPads();
+// Ask the browser to keep our storage (Safari otherwise tidies away sites that go unused).
+navigator.storage?.persist?.().catch(() => {});
 await projects.boot();
 refreshTakesCount();
 syncToggles();

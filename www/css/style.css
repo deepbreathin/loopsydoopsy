@@ -994,3 +994,29 @@ dialog form.help {
     order: 2;
   }
 }
+
+/* ---------- pad sheet for an empty pad; MP3 / WAV buttons on takes ---------- */
+
+div.needs-sound {
+  display: contents;
+}
+#padSheet.empty .needs-sound {
+  display: none;
+}
+.takes button.fmt {
+  width: auto;
+  min-width: 44px;
+  padding: 0 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.takes button.fmt small {
+  font-weight: 750;
+  font-size: 12px;
+}
+.takes button.fmt svg {
+  width: 16px;
+  height: 16px;
+}

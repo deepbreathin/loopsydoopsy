@@ -224,7 +224,18 @@ export class Projects {
     const base = fileName(this.current.name);
     const files = this.engine.pads
       .filter((p) => p.hasSound)
-      .map((p) => ({ blob: encodeWav(p.buffer.getChannelData(0), p.buffer.sampleRate), name: `${base}-pad${p.index + 1}.wav` }));
+      .map((p) => ({
+        blob: encodeWav(p.buffer.getChannelData(0), p.buffer.sampleRate, {
+          app: 'loopsy',
+          v: 1,
+          bpm: this.settings.bpm,
+          beatsPerBar: this.settings.beatsPerBar,
+          bars: p.free ? null : p.bars,
+          free: p.free,
+          mode: p.mode,
+        }),
+        name: `${base}-pad${p.index + 1}.wav`,
+      }));
     if (files.length) await this.share(files, `${this.current.name} — sounds`);
   }
 

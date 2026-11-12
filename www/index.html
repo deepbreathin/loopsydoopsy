@@ -5,11 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#1c1b22" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Loopsy" />
+    <meta name="description" content="Record colourful, perfectly timed loops on eight pads and jam over the top." />
     <title>Loopsy Doopsy</title>
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
@@ -66,6 +69,8 @@
     <dialog class="sheet" id="padSheet">
       <form method="dialog">
         <h2 id="padTitle">Pad</h2>
+        <p class="sub" id="padEmptyNote" hidden>Tap the pad to record into it, or load a sound someone sent you (from Loopsy Doopsy, a voice memo, any WAV, MP3 or M4A).</p>
+        <div class="needs-sound">
         <div class="seg" id="modeSeg">
           <button type="button" data-mode="loop">∞ Loop<small>tap on / off, stays in time</small></button>
           <button type="button" data-mode="oneshot">1× One-shot<small>tap to play once</small></button>
@@ -76,6 +81,12 @@
           <button type="button" id="padRerec">● Re-record</button>
           <button type="button" id="padClear" class="danger">Clear</button>
         </div>
+        </div>
+        <div class="actions">
+          <button type="button" id="padSend" class="needs-sound">📤 Send this sound</button>
+          <button type="button" id="padLoad">📂 Load a sound file</button>
+        </div>
+        <input type="file" id="padFile" hidden />
         <button class="close" value="close">Done</button>
       </form>
     </dialog>
@@ -154,7 +165,7 @@
     <dialog class="sheet" id="takesSheet">
       <form method="dialog">
         <h2>Recordings</h2>
-        <p class="sub">Tap <b>Rec</b> to record what you play on the pads, or <b>Sing on top</b> to add your voice too. The sounds themselves live in your soundboard.</p>
+        <p class="sub">Tap <b>Rec</b> to record what you play on the pads, or <b>Sing on top</b> to add your voice too. <b>MP3</b> shares a small file that plays anywhere; <b>WAV</b> is full quality. The sounds themselves live in your soundboard.</p>
         <ul class="takes" id="takesList"></ul>
         <button class="close" value="close">Done</button>
       </form>
@@ -168,6 +179,7 @@
           <button type="button" data-open="song">🎼 Song<small>plan when each pad plays, then sing over it</small></button>
           <button type="button" data-open="help">💡 Looping basics<small>bars, layers and leaving space</small></button>
           <button type="button" data-open="settings">⚙︎ Tempo &amp; settings</button>
+          <button type="button" data-open="install" id="menuInstall">📲 Install the app<small>on your iPhone, Android or computer</small></button>
         </div>
         <button class="close" value="close">Done</button>
       </form>
@@ -187,7 +199,8 @@
           <button type="button" id="importBoard">📂 Open a backup</button>
           <button type="button" id="dupProject">Duplicate</button>
         </div>
-        <input type="file" id="importFile" accept=".loopsy,application/octet-stream" hidden />
+        <input type="file" id="importFile" hidden />
+        <p class="sub"><b>Making music with a friend?</b> Tap <b>Back up / send</b> and send them the file. They open it with <b>Open a backup</b>, add their own layers, and send it back. Single sounds can go back and forth too: hold a pad → <b>Send this sound</b>.</p>
         <h3>Your soundboards</h3>
         <ul class="takes" id="projectList"></ul>
         <button class="close" value="close">Done</button>
@@ -233,6 +246,41 @@
       </form>
     </dialog>
 
+    <!-- Install -->
+    <dialog class="sheet" id="installSheet">
+      <form method="dialog" class="help">
+        <h2>Install Loopsy Doopsy</h2>
+        <p>Loopsy Doopsy runs in your web browser, and you can add it to your home screen or dock so it opens like any other app and works offline. Your sounds stay on your device; nothing is uploaded.</p>
+        <div class="actions" id="installNowRow" hidden>
+          <button type="button" class="primary" id="installNow">📲 Install now</button>
+        </div>
+        <section data-os="ios">
+          <h3>iPhone &amp; iPad (Safari)</h3>
+          <ol>
+            <li>Tap the <b>Share</b> button <span aria-hidden="true">(the square with an arrow)</span>.</li>
+            <li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+            <li>Open it from the home screen and allow the microphone when asked.</li>
+          </ol>
+          <p class="sub">Can't hear anything? Check the ring/silent switch on the side of the phone. Installing to the home screen also stops Safari from tidying your sounds away if you don't open it for a while.</p>
+        </section>
+        <section data-os="android">
+          <h3>Android (Chrome)</h3>
+          <ol>
+            <li>Tap the <b>⋮</b> menu, then <b>Install app</b> or <b>Add to Home screen</b>.</li>
+          </ol>
+        </section>
+        <section data-os="desktop">
+          <h3>Computer (Chrome, Edge)</h3>
+          <ol>
+            <li>Click the install icon at the right of the address bar, or open the browser menu and choose <b>Install Loopsy Doopsy</b>.</li>
+            <li>On a Mac with Safari: <b>File → Add to Dock</b>.</li>
+          </ol>
+          <p class="sub">Keys: <b>1–8</b> tap the pads, <b>Space</b> starts and stops, <b>R</b> records what you play.</p>
+        </section>
+        <button class="close primary" value="close">Done</button>
+      </form>
+    </dialog>
+
     <!-- Looping basics -->
     <dialog class="sheet wide" id="helpSheet">
       <form method="dialog" class="help">
@@ -272,7 +320,7 @@
 
         <section>
           <h3>Timing</h3>
-          <p>Come in right on the "1", when the ring turns red. The ring turns <b>white</b> for the last bar: that's your cue to finish your phrase and take a breath. Slightly early or late? Hold the pad and use <b>Trim</b>. Headphones stop the loops leaking into the mic.</p>
+          <p>Before recording, a hand sweeps once round the pad, one tick per beat. Come in right as it reaches the <b>red mark at the top</b>, when the ring turns red. The ring turns <b>white</b> for the last bar: that's your cue to finish your phrase and take a breath. Slightly early or late? Hold the pad and use <b>Trim</b>. Headphones stop the loops leaking into the mic.</p>
         </section>
 
         <section>

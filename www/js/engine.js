@@ -1,4 +1,4 @@
-import { barDur, beatDur, findOnset, median, nextBoundary, peaks, phaseAt, renderLoop } from './timing.js';
+import { barDur, beatDur, findOnset, median, mod, nextBoundary, peaks, phaseAt, renderLoop, rotate } from './timing.js';
 import { blockPitch, pitchRange, pitchTrack } from './pitch.js';
 
 export const PAD_COUNT = 8;
@@ -21,6 +21,7 @@ class Pad {
     this.bars = null;
     this.free = false; // free-length (one-shot only), not locked to the grid
     this.fold = false; // wrap the overrun tail back onto the start of the loop
+    this.startBar = 0; // bar of the loop grid the take began on (the loop is turned so it stays in place)
     this.raw = null; // full capture: pre-roll + take + overrun
     this.sampleRate = 0;
     this.trimStart = 0; // samples into raw where the loop starts
@@ -402,9 +403,9 @@ export class Engine extends EventTarget {
       start = now + 0.1 + lead;
       this.origin = start;
     } else {
-      // Wait for the loops to come back round to their beginning.
-      const cycle = this.cycleBars(playing) * bar;
-      start = nextBoundary(now + Math.max(0.1, Math.min(lead, cycle) / 2), this.origin, cycle);
+      // Just one bar's count-in, landing on the next bar line so it stays in time. The take
+      // doesn't have to start where the loops do: it's turned to fit them afterwards.
+      start = nextBoundary(now + Math.max(0.15, lead * 0.75), this.origin, bar);
     }
     pad.reset();
     pad.bars = bars;
@@ -445,8 +446,9 @@ export class Engine extends EventTarget {
 
   updatePad(pad, now) {
     if (pad.state === 'armed' && now >= pad.rec.start) {
-      // A new longest loop becomes the grid everything else lines up with.
-      if (pad.bars >= this.cycleBars(this.sounding(pad))) this.origin = pad.rec.start;
+      // With nothing else playing, this take sets the grid everything else lines up with.
+      if (!this.sounding(pad).length) this.origin = pad.rec.start;
+      pad.rec.gridBar = Math.round((pad.rec.start - this.origin) / this.bar);
       pad.state = 'recording';
       this.emit('change', pad);
     }
@@ -485,6 +487,7 @@ export class Engine extends EventTarget {
       pad.trimStart = Math.round(pre * sr);
       pad.defaultStart = pad.trimStart;
       pad.lengthSamples = Math.round(pad.bars * this.bar * sr);
+      pad.startBar = pad.rec.gridBar ?? 0;
       pad.mode = 'loop';
       this.rebuild(pad);
       pad.state = 'ready';
@@ -493,7 +496,7 @@ export class Engine extends EventTarget {
         pad.enabled = true;
         // The loop's second time round began when recording ended; join it there.
         const at = this.now + 0.02;
-        if (this.running) this.startLoopAt(pad, at, phaseAt(at, end, pad.buffer.duration));
+        if (this.running) this.startLoopAt(pad, at, phaseAt(at, this.origin, pad.buffer.duration));
       }
       this.emit('change', pad);
       this.emit('recorded', pad);
@@ -511,10 +514,14 @@ export class Engine extends EventTarget {
   rebuild(pad) {
     if (!pad.raw) return;
     const sr = pad.sampleRate;
-    const data = renderLoop(pad.raw, pad.trimStart, pad.lengthSamples, {
+    let data = renderLoop(pad.raw, pad.trimStart, pad.lengthSamples, {
       fade: Math.round(EDGE_FADE * sr),
       fold: pad.fold && !pad.free ? Math.round(Math.min(this.bar / 2, 1.5) * sr) : 0,
     });
+    // A take that began partway through the loop cycle is turned so its first sample sits at
+    // the top of the cycle; then "from the beginning" still lines up with the other loops.
+    const turn = pad.free || !pad.bars ? 0 : mod(pad.startBar || 0, pad.bars);
+    if (turn) data = rotate(data, Math.round((turn * pad.lengthSamples) / pad.bars));
     if (this.ctx) {
       const buf = this.ctx.createBuffer(1, data.length, sr);
       buf.copyToChannel(data, 0);
@@ -684,6 +691,7 @@ export class Engine extends EventTarget {
       bars: pad.bars,
       free: pad.free,
       fold: pad.fold,
+      startBar: pad.startBar,
       raw: pad.raw,
       sampleRate: pad.sampleRate,
       trimStart: pad.trimStart,
@@ -702,6 +710,28 @@ export class Engine extends EventTarget {
       pad.state = 'ready';
       this.rebuild(pad);
     }
+    this.emit('change', pad);
+  }
+
+  // Put a sound from a file on a pad. `bars` locks it to the grid as a loop; without it the
+  // sound becomes a free-length one-shot (it can be trimmed to a length later).
+  loadSound(pad, samples, sampleRate, bars) {
+    this.stopSource(pad, this.now);
+    pad.reset();
+    pad.raw = samples;
+    pad.sampleRate = sampleRate;
+    if (bars) {
+      pad.bars = bars;
+      pad.lengthSamples = Math.round(bars * this.bar * sampleRate);
+      pad.mode = 'loop';
+    } else {
+      pad.free = true;
+      pad.bars = this.settings.loopBars;
+      pad.lengthSamples = samples.length;
+      pad.mode = 'oneshot';
+    }
+    pad.state = 'ready';
+    this.rebuild(pad);
     this.emit('change', pad);
   }
 

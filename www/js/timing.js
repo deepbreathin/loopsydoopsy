@@ -70,6 +70,23 @@ export function renderLoop(raw, start, length, { fade = 0, fold = 0 } = {}) {
   return out;
 }
 
+// Turn a loop round by `shift` samples: out[j] = data[j - shift] (wrapping).
+export function rotate(data, shift) {
+  const n = data.length;
+  const k = mod(Math.round(shift), n || 1);
+  if (!k) return data;
+  const out = new Float32Array(n);
+  out.set(data.subarray(n - k), 0);
+  out.set(data.subarray(0, n - k), k);
+  return out;
+}
+
+// How many bars a sound of `seconds` is, if it's (very nearly) one of `lengths`; else null.
+export function fitBars(seconds, bar, lengths, tolerance = 0.03) {
+  for (const n of lengths) if (Math.abs(seconds / bar - n) <= n * tolerance) return n;
+  return null;
+}
+
 // Median of a numeric array (used for latency calibration).
 export function median(xs) {
   if (!xs.length) return NaN;

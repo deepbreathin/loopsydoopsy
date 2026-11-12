@@ -67,4 +67,5 @@ export async function listProjects() {
 
 export const saveTake = (take) => run('takes', 'readwrite', (s) => s.put(take));
 export const deleteTake = (id) => run('takes', 'readwrite', (s) => s.delete(id));
+export const getTake = (id) => run('takes', 'readonly', (s) => s.get(id));
 export const listTakes = () => run('takes', 'readonly', (s) => s.getAll());

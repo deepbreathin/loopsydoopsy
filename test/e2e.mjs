@@ -110,6 +110,55 @@ try {
   await page.screenshot({ path: shots + '5-trim.png' });
   await page.click('#trimSheet .primary');
 
+  // Record pad 3 while loops play, tapping mid-way through the loop cycle: the count-in is
+  // still just one bar (not "wait for the loops"), and the take is turned to stay in sync.
+  await until(() => {
+    const e = loopsy.engine;
+    const ph = (((e.now - e.origin) % (2 * e.bar)) + 2 * e.bar) % (2 * e.bar);
+    return ph > 0.05 * e.bar && ph < 0.2 * e.bar;
+  });
+  const tapAt = await ev(() => loopsy.engine.now);
+  await pads.nth(2).click();
+  await until(() => loopsy.engine.pads[2].state === 'armed');
+  const lead = await ev((t) => (loopsy.engine.pads[2].rec.start - t) / loopsy.engine.bar, tapAt);
+  assert.ok(lead > 0.7 && lead <= 1.8, `count-in is about one bar (${lead.toFixed(2)} bars)`);
+  await until(() => loopsy.engine.pads[2].state === 'armed' && loopsy.engine.pads[2].rec.start - loopsy.engine.now < loopsy.engine.bar * 0.5);
+  await page.screenshot({ path: shots + '5b-count-in-hand.png' });
+  await until(() => loopsy.engine.pads[2].state === 'ready' && loopsy.engine.pads[2].source, null, 9000);
+  const turned = await ev(() => {
+    const [, b, c] = loopsy.engine.pads;
+    const len = b.buffer.duration;
+    const ph = (((c.playFrom - b.playFrom) % len) + len) % len;
+    return { startBar: c.startBar, sync: Math.min(ph, len - ph) };
+  });
+  assert.equal(turned.startBar % 2, 1, 'take began on the second bar of the cycle');
+  assert.ok(turned.sync < 1e-6, 'and its beginning still lines up with the other loops');
+
+  // Send pad 2's sound as a file, then load it onto pad 3: it comes back as a 2-bar loop.
+  const longPress = async (i) => {
+    const b = await pads.nth(i).boundingBox();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down();
+    await sleep(650);
+    await page.mouse.up();
+  };
+  await longPress(1);
+  const [padWav] = await Promise.all([page.waitForEvent('download'), page.click('#padSend')]);
+  const padPath = shots + 'pad.wav';
+  await padWav.saveAs(padPath);
+  await page.click('#padSheet .close');
+  await ev(() => loopsy.engine.clear(loopsy.engine.pads[2]));
+  await longPress(2);
+  assert.ok(await page.locator('#padSheet').evaluate((d) => d.open && d.classList.contains('empty')), 'empty pad offers to load a sound');
+  await page.setInputFiles('#padFile', padPath);
+  await until(() => loopsy.engine.pads[2].hasSound);
+  const loaded = await ev(() => {
+    const [, b, c] = loopsy.engine.pads;
+    return { bars: c.bars, mode: c.mode, same: c.buffer.length === b.buffer.length };
+  });
+  assert.deepEqual(loaded, { bars: 2, mode: 'loop', same: true }, 'a sent pad sound loads back onto the grid');
+  await ev(() => loopsy.engine.clear(loopsy.engine.pads[2]));
+
   // Sing on top: one tap records pads + voice, second tap saves.
   await page.click('.pad.sing');
   await until(() => loopsy.engine.session && loopsy.settings.liveMic, null, 3000);
@@ -118,6 +167,14 @@ try {
   await page.click('.pad.sing');
   await until(() => document.getElementById('takesCount').textContent === '1', null, 4000);
   assert.equal(await ev(() => loopsy.settings.liveMic), false, 'Sing turns the mic back off');
+  // Each take gets an MP3 made alongside it, for sharing.
+  const hasMp3 = () => ev(async () => (await (await import('./js/storage.js')).listTakes()).some((t) => t.mp3?.size > 1000));
+  for (let i = 0; i < 150 && !(await hasMp3()); i++) await sleep(100);
+  const head = await ev(async () => {
+    const t = (await (await import('./js/storage.js')).listTakes()).find((x) => x.mp3);
+    return [...new Uint8Array(await t.mp3.slice(0, 2).arrayBuffer())];
+  });
+  assert.ok(head[0] === 0xff && (head[1] & 0xe0) === 0xe0, 'MP3 starts with a frame header');
 
   // Rec: records just the pads — the mic stays out of it.
   await page.click('#recBtn');

@@ -60,16 +60,53 @@ export function drawPad(g, w, h, pad, v) {
   }
 
   if (s === 'armed') {
-    // Count-in: big number of beats until recording starts.
-    g.setLineDash([R * 0.06, R * 0.06]);
-    g.lineWidth = lw * 2;
-    g.strokeStyle = 'rgba(255,255,255,0.9)';
-    g.lineDashOffset = -v.time * R * 0.3;
-    circle(g, cx, cy, R);
+    // Count-in: one bar. A hand sweeps round like a clock, one tick per beat, and recording
+    // starts the moment it reaches the red mark at the top.
+    const f = v.countFrac; // null while waiting for the count-in bar to begin
+    const top = angle(0);
+    // The red "go" mark at 12 o'clock.
+    g.fillStyle = '#e8132b';
+    g.beginPath();
+    g.moveTo(cx, cy - R + R * 0.02);
+    g.lineTo(cx - R * 0.09, cy - R - R * 0.13);
+    g.lineTo(cx + R * 0.09, cy - R - R * 0.13);
+    g.closePath();
+    g.fill();
+    if (f == null) {
+      g.setLineDash([R * 0.06, R * 0.06]);
+      g.lineWidth = lw * 2;
+      g.strokeStyle = 'rgba(255,255,255,0.7)';
+      g.lineDashOffset = -v.time * R * 0.3;
+      circle(g, cx, cy, R);
+      g.stroke();
+      g.setLineDash([]);
+      label(g, cx, cy, R * 0.17, ink + '0.8)', 'get ready…', true);
+      return;
+    }
+    // Swept wedge, so how far round it is reads at a glance.
+    g.fillStyle = 'rgba(255,255,255,0.32)';
+    g.beginPath();
+    g.moveTo(cx, cy);
+    g.arc(cx, cy, R, top, angle(f));
+    g.closePath();
+    g.fill();
+    g.lineWidth = lw * 3.2;
+    g.lineCap = 'round';
+    g.strokeStyle = 'rgba(255,255,255,0.95)';
+    g.beginPath();
+    g.arc(cx, cy, R, top, angle(f));
     g.stroke();
-    g.setLineDash([]);
-    label(g, cx, cy, R * 0.6, 'rgba(255,255,255,0.95)', String(v.countdown), true);
-    label(g, cx, cy + R * 0.5, R * 0.13, ink + '0.7)', v.countLabel);
+    // The hand itself.
+    const a = angle(f);
+    g.strokeStyle = '#fff';
+    g.lineWidth = lw * 2.4;
+    g.beginPath();
+    g.moveTo(cx + Math.cos(a) * R * 0.42, cy + Math.sin(a) * R * 0.42);
+    g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R);
+    g.stroke();
+    dot(g, cx + Math.cos(a) * R, cy + Math.sin(a) * R, lw * 3.4, '#fff');
+    label(g, cx, cy - R * 0.04, R * 0.4, 'rgba(255,255,255,0.95)', String(v.countdown), true);
+    label(g, cx, cy + R * 0.27, R * 0.11, ink + '0.75)', 'sing at the top');
     return;
   }
 

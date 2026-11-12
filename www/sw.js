@@ -1,5 +1,5 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
-const CACHE = 'loopsy-v4';
+const CACHE = 'loopsy-v5';
 const SHELL = [
   './',
   'index.html',
@@ -18,15 +18,20 @@ const SHELL = [
   'js/pitch.js',
   'js/projects.js',
   'js/song.js',
+  'js/audio-files.js',
+  'js/mp3-worker.js',
+  'vendor/lame.min.js',
   'vendor/capacitor-core.js',
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',
   'icons/icon-512.png',
+  'icons/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+  // Fetch fresh copies (not the browser's HTTP cache) so a new version is all one version.
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))));
   self.skipWaiting();
 });
 

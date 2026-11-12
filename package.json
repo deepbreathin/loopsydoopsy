@@ -3,23 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Colourful 8-pad loop recorder for phones",
+  "description": "Colourful 8-pad loop recorder: an installable web app (PWA)",
   "scripts": {
     "start": "npx --yes serve -l 5173 www",
-    "android:sync": "cap sync android",
-    "android:build": "cap sync android && cd android && ./gradlew assembleDebug",
     "test": "node --test test/*.test.js",
-    "test:e2e": "node test/e2e.mjs",
-    "vendor": "cp node_modules/@capacitor/core/dist/index.js www/vendor/capacitor-core.js && sed -i '1i // Vendored from @capacitor/core (MIT). Refresh with: npm run vendor' www/vendor/capacitor-core.js"
-  },
-  "dependencies": {
-    "@capacitor/android": "^8.5.3",
-    "@capacitor/app": "^8.1.2",
-    "@capacitor/core": "^8.5.3",
-    "@capacitor/filesystem": "^8.1.5",
-    "@capacitor/share": "^8.0.3"
-  },
-  "devDependencies": {
-    "@capacitor/cli": "^8.5.3"
+    "test:e2e": "node test/e2e.mjs"
   }
 }

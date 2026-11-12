@@ -1,7 +1,7 @@
-// The Help & suggestions box: ask how something works, or send an idea / problem report.
-// Answers come from the built-in guide below straight away; with a help server set up
-// (config.js) questions go to an AI helper and suggestions land on the server.
-import { APP_VERSION, GITHUB_REPO, HELP_SERVER } from './config.js';
+// The Help & suggestions box: an FAQ you can search, and a way to send an idea or problem
+// report (it opens a pre-filled GitHub issue). No server needed.
+const GITHUB_REPO = 'deepbreathin/loopsydoopsy';
+const APP_VERSION = '2026.11';
 
 const $ = (id) => document.getElementById(id);
 
@@ -60,7 +60,6 @@ export class HelpBox {
       this.ask();
     });
     $('sendSuggestion').onclick = () => this.suggest();
-    $('askAi').hidden = !HELP_SERVER;
     this.renderCommon();
   }
 
@@ -77,7 +76,7 @@ export class HelpBox {
   renderCommon() {
     const ul = $('commonQs');
     ul.innerHTML = '';
-    for (const f of FAQ.slice(0, 8)) {
+    for (const f of FAQ) {
       const li = document.createElement('li');
       const b = document.createElement('button');
       b.type = 'button';
@@ -108,56 +107,16 @@ export class HelpBox {
     const q = input.value.trim();
     if (!q) return;
     input.value = '';
-    if (!HELP_SERVER) {
-      const hits = searchFaq(q, 2);
-      if (hits.length) this.show(q, hits.map((f) => `${f.q}\n${f.a}`).join('\n\n'));
-      else this.show(q, 'I couldn’t find that in the guide. Try different words, or send it on the Suggest tab so the maker can help.');
-      return;
-    }
-    const aEl = this.show(q, 'Thinking…', 'pending');
-    try {
-      const res = await fetch(`${HELP_SERVER}/ask`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ question: q, history: this.history }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.answer) throw new Error(data.error || 'The helper isn’t available right now.');
-      aEl.textContent = data.answer;
-      aEl.classList.remove('pending');
-      this.history.push({ role: 'user', content: q }, { role: 'assistant', content: data.answer });
-    } catch (e) {
-      // Offline or the helper is down: fall back to the built-in guide.
-      const hits = searchFaq(q);
-      aEl.classList.remove('pending');
-      aEl.textContent = hits.length
-        ? `${hits[0].q}\n${hits[0].a}`
-        : `${navigator.onLine ? e.message : 'You’re offline.'} You can send the question on the Suggest tab.`;
-    }
+    const hits = searchFaq(q, 2);
+    if (hits.length) this.show(q, hits.map((f) => `${f.q}\n${f.a}`).join('\n\n'));
+    else this.show(q, 'Nothing in the FAQ matches that. Try other words, or ask on the Suggest tab.');
   }
 
-  async suggest() {
+  suggest() {
     const text = $('suggestText').value.trim();
     if (!text) return this.toast('Write something first');
     const kind = $('suggestKind').value;
     const info = $('suggestDevice').checked ? device() : '';
-    if (HELP_SERVER) {
-      try {
-        const res = await fetch(`${HELP_SERVER}/feedback`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ kind, text, device: info, version: APP_VERSION }),
-        });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'failed');
-        $('suggestText').value = '';
-        this.dlg.close();
-        this.toast('Thanks! Sent to the maker 💌');
-        return;
-      } catch (e) {
-        if (e.message !== 'failed' && navigator.onLine) return this.toast(e.message);
-        // Fall through to GitHub if the server can't be reached.
-      }
-    }
     const title = `${{ idea: '💡 Idea', bug: '🐞 Problem', other: '💬' }[kind] || '💬'}: ${text.split('\n')[0].slice(0, 70)}`;
     const body = `${text}\n\n---\nApp version ${APP_VERSION}${info ? `\nDevice: ${info}` : ''}`;
     window.open(`https://github.com/${GITHUB_REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`, '_blank', 'noopener');

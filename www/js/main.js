@@ -2,7 +2,6 @@ import { Engine, LOOP_LENGTHS, PAD_COUNT } from './engine.js';
 import { decodeWavBlob, readAudioFile, toMp3 } from './audio-files.js';
 import { drawPad, drawSing } from './pad-view.js';
 import * as layout from './layout.js';
-import { isNative, onBackButton, shareFiles } from './native.js';
 import { pitchRange } from './pitch.js';
 import { Projects } from './projects.js';
 import { SongEditor } from './song.js';
@@ -439,7 +438,7 @@ $('menuSheet').addEventListener('click', (e) => {
   const what = e.target.closest('button')?.dataset.open;
   if (!what) return;
   $('menuSheet').close();
-  ({ projects: () => projects.show(), song: () => songEditor.open(), help: openHelp, settings: openSettings, install: openInstall, helpbox: () => helpBox.open() })[what]();
+  ({ projects: () => projects.show(), song: () => songEditor.open(), help: openHelp, settings: openSettings, install: openInstall, helpbox: () => helpBox.open(), welcome: showSplash })[what]();
 });
 $('tempoBtn').onclick = () => openSettings();
 $('boardName').onclick = () => projects.show();
@@ -458,13 +457,16 @@ engine.addEventListener('song', () => {
 
 // ---------- install (PWA) ----------
 
+// Installing matters: browsers may clear a site's storage if it isn't opened for a while
+// (Safari after about a week), but not an installed app's. So it's offered up front.
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault(); // offer it from the menu instead of a browser banner
+  e.preventDefault(); // offer it ourselves instead of a browser banner
   installPrompt = e;
+  $('splashInstallNow').hidden = false;
 });
 const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-$('menuInstall').hidden = isNative || standalone;
+$('menuInstall').hidden = standalone;
 
 function deviceKind() {
   const ua = navigator.userAgent;
@@ -473,6 +475,38 @@ function deviceKind() {
   return 'desktop';
 }
 
+const INSTALL_HOW = {
+  ios: 'In Safari, tap Share (the square with an arrow), then “Add to Home Screen”. Opened this from a message? Open it in Safari first.',
+  android: 'In Chrome, tap ⋮, then “Install app”.',
+  desktop: 'Click the install icon at the right of the address bar (Chrome or Edge). Safari on a Mac: File → Add to Dock.',
+};
+
+function showSplash() {
+  $('splashInstall').hidden = standalone;
+  $('splashInstallHow').textContent = INSTALL_HOW[deviceKind()];
+  $('splashInstallNow').hidden = !installPrompt;
+  $('splash').hidden = false;
+}
+
+async function installNow() {
+  if (!installPrompt) return false;
+  installPrompt.prompt();
+  const { outcome } = await installPrompt.userChoice;
+  installPrompt = null;
+  $('splashInstallNow').hidden = true;
+  if (outcome === 'accepted') $('menuInstall').hidden = true;
+  return outcome === 'accepted';
+}
+$('splashInstallNow').onclick = () => installNow();
+
+// After the first recording in a browser tab, a gentle reminder to install.
+let installNudged = standalone;
+engine.addEventListener('recorded', () => {
+  if (installNudged) return;
+  installNudged = true;
+  setTimeout(() => toast('Install the app so your sounds are kept safe', 'How', openInstall), 1500);
+});
+
 function openInstall() {
   const kind = deviceKind();
   for (const sec of $('installSheet').querySelectorAll('[data-os]')) sec.hidden = sec.dataset.os !== kind;
@@ -480,12 +514,8 @@ function openInstall() {
   $('installSheet').showModal();
 }
 $('installNow').onclick = async () => {
-  if (!installPrompt) return;
-  installPrompt.prompt();
-  const { outcome } = await installPrompt.userChoice;
-  installPrompt = null;
+  await installNow();
   $('installSheet').close();
-  if (outcome === 'accepted') $('menuInstall').hidden = true;
 };
 
 // ---------- keyboard (computers) ----------
@@ -740,16 +770,8 @@ async function shareTakeMp3(t) {
   share([{ blob: mp3, name: takeFile(t, 'mp3') }], t.name);
 }
 
-// Android: the share sheet (Drive, WhatsApp, Files…). Browser: share sheet if it can, else download.
+// The phone's share sheet (WhatsApp, AirDrop, Files…) where there is one, else a download.
 async function share(files, title) {
-  if (isNative) {
-    try {
-      await shareFiles(files, title);
-    } catch (e) {
-      if (!/cancel/i.test(e?.message || '')) toast('Couldn’t share that');
-    }
-    return;
-  }
   const list = files.map((f) => new File([f.blob], f.name, { type: f.blob.type || 'application/octet-stream' }));
   if (navigator.canShare?.({ files: list })) {
     try {
@@ -933,7 +955,8 @@ try {
 } catch {
   /* storage blocked */
 }
-$('splash').hidden = welcomed;
+if (welcomed) $('splash').hidden = true;
+else showSplash();
 const dismissSplash = () => {
   $('splash').hidden = true;
   try {
@@ -951,19 +974,9 @@ $('basicsBtn').onclick = () => {
 // Phones only let audio start from a gesture; unlock on the first touch anywhere.
 document.addEventListener('pointerdown', () => engine.init(), { once: true, capture: true });
 
-// Offline cache for the web version; the Android app already ships its files.
-if (!isNative && 'serviceWorker' in navigator && location.protocol === 'https:') {
+// Offline support (and what makes it installable).
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
-
-onBackButton(() => {
-  const open = [...document.querySelectorAll('dialog[open]')].at(-1);
-  if (open) {
-    if (open.id === 'trimSheet') $('trimCancel').click();
-    else open.close();
-    return true;
-  }
-  return false;
-});
 
 window.loopsy = { engine, settings, projects, getSong: () => song, setSong: (s) => (song = s) }; // handy for debugging

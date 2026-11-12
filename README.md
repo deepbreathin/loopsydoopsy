@@ -6,7 +6,7 @@ A colourful loop recorder for your phone. There are eight pads. Tap one and it c
 
 It's built for singing and humming: record a few vocal loops, then tap **Sing on top** to record yourself over the lot.
 
-It runs as an **installable web app (PWA)** on iPhone, iPad, Android and computers, and as an **Android app** (built with [Capacitor](https://capacitorjs.com)). It's laid out for foldables like the **OnePlus Open**: 2×4 pads on the cover screen, a 3×3 grid of large pads when unfolded, and pads kept clear of the fold when half-open. The same code also runs in a browser.
+It's an **installable web app (PWA)** for iPhone, iPad, Android and computers. It's laid out for foldables like the **OnePlus Open** too: 2×4 pads on the cover screen, a 3×3 grid of large pads when unfolded, and pads kept clear of the fold when half-open.
 
 ## Use it on iPhone, Android or a computer (web app)
 
@@ -16,35 +16,17 @@ Every push to `main` publishes `www/` to **GitHub Pages**, at **https://deepbrea
 - **Android:** Chrome → ⋮ → **Install app**.
 - **Computer:** Chrome or Edge → the install icon in the address bar (Safari on a Mac: File → Add to Dock). Keys: **1–8** tap the pads, **Space** plays/stops, **R** records.
 
-The app's menu has an **Install the app** page with the same steps for whatever device you're on. Once installed it works offline.
+The first time someone opens it in a browser, the welcome screen says **install it first** and shows the steps for their device (Menu → Getting started brings it back; Menu → Install the app has the steps too). After their first recording it reminds them once more. Installing matters: sounds are saved on the device, and browsers may clear a website's saved data if it isn't opened for a while (Safari after about a week), but they don't clear an installed app's. Once installed it also works offline.
 
 **One-time setup:** the repo must be public (free Pages needs that), and in Settings → Pages → Build and deployment, Source must be **GitHub Actions**. Settings → General → Default branch should be `main`.
 
-### Help & suggestions
+### FAQ & suggestions
 
-Menu → **Help & suggestions** has two tabs. **Ask a question** answers from a built-in guide straight away. **Suggest / report** sends an idea or problem report, optionally with the device it happened on. Out of the box, suggestions open a pre-filled GitHub issue (the sender needs a GitHub account). With the optional [help server](help-server/README.md) set up, questions get AI answers and suggestions arrive without anyone needing an account; it has hard daily limits so costs stay capped.
+Menu → **FAQ & suggestions** has a searchable FAQ (in `www/js/help.js`, easy to add to) and a **Suggest** tab for ideas and problem reports, which opens a pre-filled GitHub issue (senders need a free GitHub account). New suggestions show up under the repo's **Issues**.
 
 ### What it costs to host
 
 Nothing, and it can't run up a bill. The site is a folder of static files: there's no server, database or file storage behind it. Everyone's sounds stay on their own device (in the browser's storage), and people swap sounds by sending files through whatever they already use (WhatsApp, AirDrop, email, Drive). GitHub Pages is free and has no billing to go over: it has a soft limit of about 100 GB of traffic a month, and the whole app is under 1 MB.
-
-## Install on Android (APK)
-
-Every push to GitHub builds an APK:
-
-1. Open the repo on GitHub → **Actions** → **Android APK** → the latest run → download **loopsy-doopsy-apk** (a zip with `app-debug.apk` inside).
-2. Open the APK on your phone and allow installing from that source when asked.
-3. Allow the microphone the first time you record.
-
-New builds install over the old one and keep your pads and recordings: they're all signed with the same key, `android/app/loopsy-debug.keystore`.
-
-To build it yourself, you need Node 22, JDK 21 and the Android SDK (or Android Studio):
-
-```sh
-npm ci
-npm run android:build      # → android/app/build/outputs/apk/debug/app-debug.apk
-npx cap open android       # or open it in Android Studio and press Run
-```
 
 ## Develop
 
@@ -54,10 +36,11 @@ The app is plain HTML/CSS/JS in `www/`, with no build step.
 npm start              # browser version on http://localhost:5173
 npm test               # unit tests: timing / DSP maths and the screen layouts
 npm run test:e2e       # headless Chromium with a fake mic at phone, cover-screen and unfolded sizes
-npm run android:sync   # copy www/ into the Android project after changing it
 ```
 
-Browsers only allow the microphone on **https** or `localhost`. The Android app doesn't have that limitation.
+Browsers only allow the microphone on **https** or `localhost`.
+
+The repo used to build an Android app (APK) as well; that was retired in favour of the web app. The last version with it is in the history at commit `d63b0cd` if it's ever wanted again.
 
 ## How it plays
 
@@ -125,16 +108,13 @@ The **circular waveform** comes from the app in the reference screenshot. A loop
    Folding or unfolding doesn't restart the app, so a loop keeps playing across the change.
 9. **Colourful, but readable.** The eight pads have distinct bright colours with dark ink on top. Empty pads are dimmed, pads with a sound are at full colour, and pads that are playing glow.
 
-On Android the screen stays on while the app is open, the volume buttons control the music, and Back closes whatever sheet is open (or sends the app to the background, so it doesn't quit mid-jam).
-
 **Headphones help a lot.** Without them, the mic picks up the loops coming out of the speaker. "Echo cancellation" in Settings reduces that, but it dulls the sound. Only turn on "Hear the mic through the app" when you're wearing headphones.
 
 ## Code map
 
 ```
 www/                  the app (everything below lives in here)
-android/              Capacitor Android project (MainActivity keeps the screen on, volume keys → music)
-.github/workflows/    builds the APK on every push
+.github/workflows/    publishes www/ to GitHub Pages from main
 
 index.html            layout + sheets (pad options, trim, settings, recordings, projects, song, looping basics)
 css/style.css         styles; portrait 2×4 grid, landscape 4×2
@@ -145,13 +125,11 @@ js/pad-view.js        canvas drawing of the circular pads
 js/trim.js            trim editor
 js/timing.js          pure maths (grid, loop cutting, peaks, onset detection, tap tempo) — unit-tested
 js/layout.js          picks the pad grid for the screen / fold — unit-tested
-js/native.js          Android bridges: back button, share sheet
 js/pitch.js           voice pitch detection (YIN) and pitch contours — unit-tested
 js/projects.js        soundboards: save / open / new / duplicate / backup, autosave
 js/boardfile.js       the .loopsy backup file format — unit-tested
 js/song.js            song editor and the "build it up" arrangement — unit-tested
-js/help.js            Help & suggestions box and its built-in guide — unit-tested
-js/config.js          where the help server lives (optional)
+js/help.js            FAQ & suggestions box and its built-in guide — unit-tested
 js/storage.js         IndexedDB: projects and recorded takes
 js/wav.js             WAV encoder, plus the tempo/length tag on sent pad sounds — unit-tested
 js/audio-files.js     MP3 export (via a worker) and reading audio files onto pads

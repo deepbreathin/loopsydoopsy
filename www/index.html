@@ -177,9 +177,10 @@
         <div class="menu">
           <button type="button" data-open="projects">🎛 Soundboards<small id="menuProject"></small></button>
           <button type="button" data-open="song">🎼 Song<small>plan when each pad plays, then sing over it</small></button>
+          <button type="button" data-open="welcome">🚀 Getting started<small>the first steps, and installing the app</small></button>
           <button type="button" data-open="help">💡 Looping basics<small>bars, layers and leaving space</small></button>
           <button type="button" data-open="settings">⚙︎ Tempo &amp; settings</button>
-          <button type="button" data-open="helpbox">💬 Help &amp; suggestions<small>ask how something works, or tell us an idea or a problem</small></button>
+          <button type="button" data-open="helpbox">💬 FAQ &amp; suggestions<small>how things work, or send an idea or a problem</small></button>
           <button type="button" data-open="install" id="menuInstall">📲 Install the app<small>on your iPhone, Android or computer</small></button>
         </div>
         <button class="close" value="close">Done</button>
@@ -250,19 +251,18 @@
     <!-- Help & suggestions -->
     <dialog class="sheet wide" id="helpBoxSheet">
       <form method="dialog">
-        <h2>Help &amp; suggestions</h2>
+        <h2>FAQ &amp; suggestions</h2>
         <div class="seg tabs" role="tablist">
-          <button type="button" role="tab" data-tab="ask">🙋 Ask a question</button>
+          <button type="button" role="tab" data-tab="ask">❓ FAQ</button>
           <button type="button" role="tab" data-tab="suggest">💡 Suggest / report</button>
         </div>
         <section data-panel="ask" class="ask">
           <div class="ask-log" id="askLog" hidden></div>
           <div class="ask-row" id="askForm" role="search">
-            <input type="text" id="askInput" maxlength="1000" autocomplete="off" enterkeyhint="send" placeholder="e.g. how do I save as MP3?" />
-            <button type="button" class="primary" id="askBtn">Ask</button>
+            <input type="text" id="askInput" maxlength="1000" autocomplete="off" enterkeyhint="send" placeholder="Search, e.g. save as MP3" />
+            <button type="button" class="primary" id="askBtn">Search</button>
           </div>
-          <p class="sub" id="askAi">Answers come from an AI helper, so they can occasionally be wrong.</p>
-          <h3>Common questions</h3>
+          <h3>Questions people ask</h3>
           <ul class="common" id="commonQs"></ul>
         </section>
         <section data-panel="suggest" hidden>
@@ -273,6 +273,7 @@
           <textarea id="suggestText" rows="5" maxlength="4000" placeholder="What would you like, or what went wrong? If something broke, what were you doing just before?"></textarea>
           <label class="row check"><input type="checkbox" id="suggestDevice" checked /> Include what phone or computer I'm using (helps fix problems)</label>
           <div class="actions"><button type="button" class="primary" id="sendSuggestion">Send</button></div>
+          <p class="sub">This opens GitHub with your message filled in; a free GitHub account is needed to send it.</p>
         </section>
         <button class="close" value="close">Done</button>
       </form>
@@ -282,7 +283,7 @@
     <dialog class="sheet" id="installSheet">
       <form method="dialog" class="help">
         <h2>Install Loopsy Doopsy</h2>
-        <p>Loopsy Doopsy runs in your web browser, and you can add it to your home screen or dock so it opens like any other app and works offline. Your sounds stay on your device; nothing is uploaded.</p>
+        <p>Install Loopsy Doopsy so it opens like any other app and works offline. Your sounds are saved on this device (nothing is uploaded), and installing keeps them safe: browsers can tidy away a website's saved data if it isn't opened for a while, but not an installed app's.</p>
         <div class="actions" id="installNowRow" hidden>
           <button type="button" class="primary" id="installNow">📲 Install now</button>
         </div>
@@ -376,12 +377,19 @@
       </div>
       <h1>Loopsy Doopsy</h1>
       <p class="lead">Hum, sing and stack your voice into songs.</p>
+      <div class="install-card" id="splashInstall" hidden>
+        <b>📲 First, install it</b>
+        <p>Your sounds are saved on this device. Installing keeps them safe (browsers can tidy away sites you don't open for a while), and it works offline.</p>
+        <p class="how" id="splashInstallHow"></p>
+        <button type="button" class="primary" id="splashInstallNow" hidden>Install now</button>
+      </div>
+      <h2 class="steps-title">Getting started</h2>
       <ol>
-        <li><b>Tap a pad</b> and hum or sing. It counts you in, records, then loops it.</li>
-        <li>The ring turns <b>white</b> in the last bar, so you know when to finish.</li>
-        <li>Stack a few layers, then tap <b>Sing on top</b>.</li>
+        <li><b>Headphones on</b>, so the loops don't leak into your mic.</li>
+        <li><b>Tap a pad.</b> A hand sweeps round once: start humming when it reaches the <b>red mark</b>. Try a low “bom… bom” first.</li>
+        <li><b>Add layers</b> on other pads: a beat, then a tune. Tap pads to bring them in and out.</li>
+        <li>Tap <b>Sing on top</b> or <b>● Rec</b> to record a take, then <b>♫</b> to save it as an MP3.</li>
       </ol>
-      <p class="tip">🎧 Headphones help: the loops won't leak into your mic.</p>
       <div class="splash-actions">
         <button class="primary big" id="startBtn">Let's loop</button>
         <button class="ghost" id="basicsBtn">New to looping? Read the basics</button>

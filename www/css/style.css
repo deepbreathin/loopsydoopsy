@@ -1100,3 +1100,39 @@ div.needs-sound {
   background: var(--panel-2);
   font-weight: 600;
 }
+
+/* ---------- welcome: install card ---------- */
+
+.splash {
+  overflow-y: auto;
+  justify-content: safe center;
+}
+.install-card {
+  max-width: 380px;
+  text-align: left;
+  background: var(--panel-2);
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin: 8px 0 4px;
+}
+.install-card p {
+  margin: 6px 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.install-card .how {
+  color: var(--text);
+  font-weight: 600;
+}
+.install-card button {
+  margin-top: 6px;
+  min-height: 44px;
+  width: 100%;
+  border-radius: 12px;
+  font-weight: 750;
+}
+.splash .steps-title {
+  font-size: 16px;
+  margin: 14px 0 0;
+}

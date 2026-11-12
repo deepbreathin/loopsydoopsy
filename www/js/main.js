@@ -6,6 +6,7 @@ import { isNative, onBackButton, shareFiles } from './native.js';
 import { pitchRange } from './pitch.js';
 import { Projects } from './projects.js';
 import { SongEditor } from './song.js';
+import { HelpBox } from './help.js';
 import { TrimEditor } from './trim.js';
 import * as store from './storage.js';
 import { encodeWav } from './wav.js';
@@ -57,6 +58,7 @@ const songEditor = new SongEditor({
   onPlay: (mode) => playSong(mode),
 });
 const padEls = [];
+const helpBox = new HelpBox({ toast: (...a) => toast(...a) });
 
 // ---------- toast ----------
 
@@ -437,7 +439,7 @@ $('menuSheet').addEventListener('click', (e) => {
   const what = e.target.closest('button')?.dataset.open;
   if (!what) return;
   $('menuSheet').close();
-  ({ projects: () => projects.show(), song: () => songEditor.open(), help: openHelp, settings: openSettings, install: openInstall })[what]();
+  ({ projects: () => projects.show(), song: () => songEditor.open(), help: openHelp, settings: openSettings, install: openInstall, helpbox: () => helpBox.open() })[what]();
 });
 $('tempoBtn').onclick = () => openSettings();
 $('boardName').onclick = () => projects.show();

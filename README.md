@@ -10,7 +10,7 @@ It runs as an **installable web app (PWA)** on iPhone, iPad, Android and compute
 
 ## Use it on iPhone, Android or a computer (web app)
 
-Every push to the default branch publishes `www/` to **GitHub Pages**, at `https://<owner>.github.io/loopsydoopsy/`. Open that link, then:
+Every push to `main` publishes `www/` to **GitHub Pages**, at **https://deepbreathin.github.io/loopsydoopsy/**. Open that link, then:
 
 - **iPhone / iPad:** Safari → Share → **Add to Home Screen**.
 - **Android:** Chrome → ⋮ → **Install app**.
@@ -18,7 +18,11 @@ Every push to the default branch publishes `www/` to **GitHub Pages**, at `https
 
 The app's menu has an **Install the app** page with the same steps for whatever device you're on. Once installed it works offline.
 
-**One-time setup:** in the repo, Settings → Pages → Build and deployment → Source: **GitHub Actions**. On a free GitHub plan the repo has to be public for Pages. If you'd rather keep it private, Cloudflare Pages (free) can host the same `www/` folder.
+**One-time setup:** the repo must be public (free Pages needs that), and in Settings → Pages → Build and deployment, Source must be **GitHub Actions**. Settings → General → Default branch should be `main`.
+
+### Help & suggestions
+
+Menu → **Help & suggestions** has two tabs. **Ask a question** answers from a built-in guide straight away. **Suggest / report** sends an idea or problem report, optionally with the device it happened on. Out of the box, suggestions open a pre-filled GitHub issue (the sender needs a GitHub account). With the optional [help server](help-server/README.md) set up, questions get AI answers and suggestions arrive without anyone needing an account; it has hard daily limits so costs stay capped.
 
 ### What it costs to host
 
@@ -146,6 +150,8 @@ js/pitch.js           voice pitch detection (YIN) and pitch contours — unit-te
 js/projects.js        soundboards: save / open / new / duplicate / backup, autosave
 js/boardfile.js       the .loopsy backup file format — unit-tested
 js/song.js            song editor and the "build it up" arrangement — unit-tested
+js/help.js            Help & suggestions box and its built-in guide — unit-tested
+js/config.js          where the help server lives (optional)
 js/storage.js         IndexedDB: projects and recorded takes
 js/wav.js             WAV encoder, plus the tempo/length tag on sent pad sounds — unit-tested
 js/audio-files.js     MP3 export (via a worker) and reading audio files onto pads

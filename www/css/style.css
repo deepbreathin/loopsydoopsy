@@ -1020,3 +1020,83 @@ div.needs-sound {
   width: 16px;
   height: 16px;
 }
+
+/* ---------- help & suggestions ---------- */
+
+.tabs {
+  margin-bottom: 4px;
+}
+.tabs [aria-selected='true'] {
+  background: var(--text);
+  color: var(--bg);
+}
+.ask-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 40dvh;
+  overflow: auto;
+}
+.ask-log p {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  white-space: pre-line;
+  line-height: 1.45;
+}
+.ask-log .q {
+  align-self: flex-end;
+  background: var(--panel-2);
+  font-weight: 650;
+  max-width: 85%;
+}
+.ask-log .a {
+  background: var(--panel);
+  border: 1px solid var(--panel-2);
+}
+.ask-log .a.pending {
+  color: var(--muted);
+}
+.ask-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.ask-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+}
+.ask-row button {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+#helpBoxSheet textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+.common {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.common button {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--panel-2);
+  font-weight: 600;
+}

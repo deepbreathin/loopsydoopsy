@@ -272,6 +272,18 @@ try {
   await until(() => loopsy.engine.pads[1].hasSound);
   await page.click('#projectsSheet .close');
 
+  // Help box: ask a question (Enter mustn't close the sheet), and the suggest tab.
+  await page.click('#menuBtn');
+  await page.click('[data-open="helpbox"]');
+  await page.fill('#askInput', 'how do I save as mp3');
+  await page.press('#askInput', 'Enter');
+  assert.ok(await page.locator('#helpBoxSheet').evaluate((d) => d.open), 'Enter keeps the help box open');
+  assert.match(await page.locator('#askLog .a').first().textContent(), /MP3/);
+  await page.screenshot({ path: shots + '9d-help.png' });
+  await page.click('[data-tab="suggest"]');
+  assert.ok(await page.locator('#suggestText').isVisible());
+  await page.click('#helpBoxSheet .close');
+
   // Reload: same project, pads restored from storage, no welcome screen the second time.
   await page.reload();
   await page.click('body');

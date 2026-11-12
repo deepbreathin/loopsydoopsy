@@ -1,2 +1,4 @@
 node_modules/
 test/screens/
+help-server/node_modules/
+help-server/.wrangler/

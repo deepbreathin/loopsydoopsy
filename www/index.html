@@ -179,6 +179,7 @@
           <button type="button" data-open="song">🎼 Song<small>plan when each pad plays, then sing over it</small></button>
           <button type="button" data-open="help">💡 Looping basics<small>bars, layers and leaving space</small></button>
           <button type="button" data-open="settings">⚙︎ Tempo &amp; settings</button>
+          <button type="button" data-open="helpbox">💬 Help &amp; suggestions<small>ask how something works, or tell us an idea or a problem</small></button>
           <button type="button" data-open="install" id="menuInstall">📲 Install the app<small>on your iPhone, Android or computer</small></button>
         </div>
         <button class="close" value="close">Done</button>
@@ -242,6 +243,37 @@
           <button type="button" id="songRec">● Record</button>
           <button type="button" id="songSing" class="primary">🎤 Record &amp; sing</button>
         </div>
+        <button class="close" value="close">Done</button>
+      </form>
+    </dialog>
+
+    <!-- Help & suggestions -->
+    <dialog class="sheet wide" id="helpBoxSheet">
+      <form method="dialog">
+        <h2>Help &amp; suggestions</h2>
+        <div class="seg tabs" role="tablist">
+          <button type="button" role="tab" data-tab="ask">🙋 Ask a question</button>
+          <button type="button" role="tab" data-tab="suggest">💡 Suggest / report</button>
+        </div>
+        <section data-panel="ask" class="ask">
+          <div class="ask-log" id="askLog" hidden></div>
+          <div class="ask-row" id="askForm" role="search">
+            <input type="text" id="askInput" maxlength="1000" autocomplete="off" enterkeyhint="send" placeholder="e.g. how do I save as MP3?" />
+            <button type="button" class="primary" id="askBtn">Ask</button>
+          </div>
+          <p class="sub" id="askAi">Answers come from an AI helper, so they can occasionally be wrong.</p>
+          <h3>Common questions</h3>
+          <ul class="common" id="commonQs"></ul>
+        </section>
+        <section data-panel="suggest" hidden>
+          <p class="sub">Got an idea for a new feature, or found something that doesn't work? Tell the maker.</p>
+          <label class="row">This is
+            <select id="suggestKind"><option value="idea">an idea</option><option value="bug">something not working</option><option value="other">something else</option></select>
+          </label>
+          <textarea id="suggestText" rows="5" maxlength="4000" placeholder="What would you like, or what went wrong? If something broke, what were you doing just before?"></textarea>
+          <label class="row check"><input type="checkbox" id="suggestDevice" checked /> Include what phone or computer I'm using (helps fix problems)</label>
+          <div class="actions"><button type="button" class="primary" id="sendSuggestion">Send</button></div>
+        </section>
         <button class="close" value="close">Done</button>
       </form>
     </dialog>

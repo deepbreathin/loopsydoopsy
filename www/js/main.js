@@ -942,10 +942,14 @@ function frame() {
       const { start, end } = pad.rec;
       // The count-in is one bar: the hand sweeps round it and recording starts at the top.
       const toGo = start - t;
-      v.countFrac = toGo > bar ? null : Math.min(1, Math.max(0, 1 - toGo / bar));
+      // The hand moves at the loop's own pace (one turn = the whole loop), and the count-in is
+      // its last bar.
+      const loopLen = bars * bar;
+      v.handFrac = toGo > loopLen ? null : Math.min(1, Math.max(0, 1 - toGo / loopLen));
+      v.countFrom = Math.max(0, 1 - bar / loopLen);
+      v.counting = toGo <= bar;
       v.waitBars = Math.max(1, Math.ceil(toGo / bar - 1e-3) - 1);
       v.countdown = Math.max(1, Math.ceil(toGo / beat - 1e-3));
-      if (pad.state === 'armed') v.beats = bpb;
       v.recFrac = (t - start) / (end - start);
       v.lastBar = t >= end - bar;
       v.beatsLeft = Math.max(1, Math.ceil((end - t) / beat - 1e-3));

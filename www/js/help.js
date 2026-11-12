@@ -19,7 +19,7 @@ const FORM = formTarget(FEEDBACK_FORM_LINK);
 const $ = (id) => document.getElementById(id);
 
 export const FAQ = [
-  { q: 'How do I record a loop?', k: 'record recording start tap empty pad loop sing hum', a: 'Tap an empty pad. A white hand sweeps once round the pad, one tick per beat. Start singing or humming the moment it reaches the red mark at the top. The ring fills red while it records and turns white in the last bar, counting “finish in 3·2·1”.' },
+  { q: 'How do I record a loop?', k: 'record recording start tap empty pad loop sing hum', a: 'Tap an empty pad. A white hand moves round the pad at the same pace as your loops, through the last bar. Start singing or humming the moment it reaches the red mark at the top. The ring fills red while it records and turns white in the last bar, counting “finish in 3·2·1”.' },
   { q: 'When exactly do I start singing?', k: 'count in countdown timing when start hand red mark late early', a: 'When the sweeping hand reaches the red mark at 12 o’clock and the ring turns red. If you came in a little early or late, tap the pad’s ⚙ → Trim & silence and slide the window to line it up; it keeps playing with your other loops so you can hear it.' },
   { q: 'How long is a loop?', k: 'length bars long short 1 2 4 8 next loop', a: 'Choose with “Next loop: 1 · 2 · 4 · 8 bars” at the bottom before you record. 4 bars is a good start. Tap the pad while it’s recording to finish early at the next 1, 2 or 4 bar mark.' },
   { q: 'How do I stop or start a loop?', k: 'play stop pause loop on off switch tap', a: 'Tap a pad with a sound to switch it on or off; it comes in from its beginning, in time with the others. ▶ / ■ at the top starts or stops everything.' },

@@ -60,10 +60,12 @@ export function drawPad(g, w, h, pad, v) {
   }
 
   if (s === 'armed') {
-    // Count-in: one bar. A hand sweeps round like a clock, one tick per beat, and recording
-    // starts the moment it reaches the red mark at the top.
-    const f = v.countFrac; // null while waiting for the count-in bar to begin
+    // Count-in. The circle is the new loop, at the same pace as the loops playing: the hand
+    // moves exactly as fast as their playheads, and the count-in is just the last bar of the
+    // circle (a quarter of it for a 4-bar loop), ending at the red mark where recording starts.
+    // Nothing moves faster than the music, so it stays calm.
     const top = angle(0);
+    const zone = angle(v.countFrom);
     // The red "go" mark at 12 o'clock.
     g.fillStyle = '#e8132b';
     g.beginPath();
@@ -72,44 +74,40 @@ export function drawPad(g, w, h, pad, v) {
     g.lineTo(cx + R * 0.09, cy - R - R * 0.13);
     g.closePath();
     g.fill();
-    if (f == null) {
-      g.setLineDash([R * 0.06, R * 0.06]);
-      g.lineWidth = lw * 2;
-      g.strokeStyle = 'rgba(255,255,255,0.7)';
-      g.lineDashOffset = -v.time * R * 0.3;
-      circle(g, cx, cy, R);
+    // The count-in bar, as a soft track leading up to the mark.
+    g.lineCap = 'round';
+    g.lineWidth = lw * 3.2;
+    g.strokeStyle = 'rgba(255,255,255,0.3)';
+    g.beginPath();
+    g.arc(cx, cy, R, zone, top + (v.countFrom === 0 ? Math.PI * 2 : 0));
+    g.stroke();
+    const f = v.handFrac; // null until the hand is within one turn of the start
+    if (f != null) {
+      if (v.counting) {
+        // Filled in as the hand moves through the count-in bar.
+        g.strokeStyle = 'rgba(255,255,255,0.95)';
+        g.beginPath();
+        g.arc(cx, cy, R, zone, angle(Math.max(f, v.countFrom)));
+        g.stroke();
+      }
+      const a = angle(f);
+      const c = v.counting ? '#fff' : 'rgba(255,255,255,0.6)';
+      g.strokeStyle = c;
+      g.lineWidth = lw * 2.4;
+      g.beginPath();
+      g.moveTo(cx + Math.cos(a) * R * 0.42, cy + Math.sin(a) * R * 0.42);
+      g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R);
       g.stroke();
-      g.setLineDash([]);
-      // Waiting for the loops to come round to their top; the count-in bar comes after.
+      dot(g, cx + Math.cos(a) * R, cy + Math.sin(a) * R, lw * 3.4, c);
+    }
+    if (v.counting) {
+      label(g, cx, cy - R * 0.04, R * 0.32, 'rgba(255,255,255,0.95)', String(v.countdown), true);
+      label(g, cx, cy + R * 0.25, R * 0.11, ink + '0.75)', 'sing at the top');
+    } else {
       label(g, cx, cy - R * 0.12, R * 0.15, ink + '0.8)', 'starts with', true);
       label(g, cx, cy + R * 0.08, R * 0.15, ink + '0.8)', 'the loops', true);
       label(g, cx, cy + R * 0.3, R * 0.085, ink + '0.6)', v.waitBars > 1 ? `count-in in ${v.waitBars} bars` : 'count-in next bar');
-      return;
     }
-    // Swept wedge, so how far round it is reads at a glance.
-    g.fillStyle = 'rgba(255,255,255,0.32)';
-    g.beginPath();
-    g.moveTo(cx, cy);
-    g.arc(cx, cy, R, top, angle(f));
-    g.closePath();
-    g.fill();
-    g.lineWidth = lw * 3.2;
-    g.lineCap = 'round';
-    g.strokeStyle = 'rgba(255,255,255,0.95)';
-    g.beginPath();
-    g.arc(cx, cy, R, top, angle(f));
-    g.stroke();
-    // The hand itself.
-    const a = angle(f);
-    g.strokeStyle = '#fff';
-    g.lineWidth = lw * 2.4;
-    g.beginPath();
-    g.moveTo(cx + Math.cos(a) * R * 0.42, cy + Math.sin(a) * R * 0.42);
-    g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R);
-    g.stroke();
-    dot(g, cx + Math.cos(a) * R, cy + Math.sin(a) * R, lw * 3.4, '#fff');
-    label(g, cx, cy - R * 0.04, R * 0.4, 'rgba(255,255,255,0.95)', String(v.countdown), true);
-    label(g, cx, cy + R * 0.27, R * 0.11, ink + '0.75)', 'sing at the top');
     return;
   }
 

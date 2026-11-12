@@ -48,7 +48,7 @@ The repo used to build an Android app (APK) as well; that was retired in favour 
 
 | Do this | What happens |
 | --- | --- |
-| Tap an **empty pad** | Records a loop after a **one-bar count-in**: a hand sweeps once round the pad, one tick per beat, and recording starts the moment it reaches the **red mark at the top** (silent unless you switch on beeps in Settings). With loops playing, it starts **together with them**: it waits (the pad says "starts with the loops") until they come round to the top, or for a shorter loop the next point they line up with it, and the hand only sweeps for the last bar. |
+| Tap an **empty pad** | Records a loop after a **one-bar count-in**: a hand moves round the pad at the same pace as the loops (one turn = the whole loop, so on a 4-bar pad the count-in is the last quarter of the circle), and recording starts the moment it reaches the **red mark at the top** (silent unless you switch on beeps in Settings). With loops playing, it starts **together with them**: it waits (the pad says "starts with the loops") until they come round to the top, or for a shorter loop the next point they line up with it, and the hand only sweeps for the last bar. |
 | Watch the **ring** while recording | It fills **red** as you record, with beat ticks round the edge. In the **last bar it turns white** and counts down "finish in 3·2·1", so you know when to stop. |
 | Tap a pad **while it's recording** | Finishes early, at the next 1, 2 or 4 bar mark, so it still lines up. |
 | Tap a **loop pad** | Switches it on or off. A loop always starts **from its beginning**, timed to come in when the other loops come round; the pad says "in 3" while it waits. |

@@ -1,5 +1,5 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
-const CACHE = 'loopsy-v10';
+const CACHE = 'loopsy-v11';
 const SHELL = [
   './',
   'index.html',

@@ -53,7 +53,7 @@ The repo used to build an Android app (APK) as well; that was retired in favour 
 | Tap a pad **while it's recording** | Finishes early, at the next 1, 2 or 4 bar mark, so it still lines up. |
 | Tap a **loop pad** | Switches it on or off. A loop always starts **from its beginning**, timed to come in when the other loops come round; the pad says "in 3" while it waits. |
 | Tap a **one-shot pad** | Plays the sound once, straight away (Keezy style). Tap fast to stutter. |
-| **⚙** on a pad (top left) | Options: Loop / One-shot, **volume**, **Trim & silence**, re-record, clear (with undo), **Send this sound** (a WAV that remembers its tempo and length) and **Load a sound file**. On an empty pad it lets you load a sound into it. Holding a pad still works as a shortcut. |
+| **⚙** on a pad (top left) | Options: Loop / One-shot, **volume**, **Trim & silence**, re-record, clear (with undo), **Save this sound** (downloads a WAV that remembers its tempo and length; **Share…** appears too on devices that can share files) and **Load a sound file**. On an empty pad it lets you load a sound into it. Holding a pad still works as a shortcut. |
 | **▶ / ■** | Starts or stops everything. Loops you've switched on start together from the top. |
 | **Next loop: 1 · 2 · 4 · 8 bars** | Sets the length of the next recording. |
 | **● Rec** (top bar) | Records **just the pads**, with no mic and so no echo. Bring loops in and out while it runs, then tap Rec again to save the take. |
@@ -88,7 +88,7 @@ Tempo & settings → **Microphone** lets you choose which mic records (the list 
 There's no account or server: you pass files back and forth.
 
 - **A whole soundboard:** Soundboards → **Back up / send** makes one `.loopsy` file. Your friend opens it with **Open a backup**, adds their layers, and sends theirs back.
-- **One sound:** a pad's ⚙ → **Send this sound**. It's an ordinary WAV, with the tempo and length tucked inside it. Loaded onto a pad (⚙ on an empty pad → **Load a sound file**), it lands on the grid as a loop of the right length; an empty soundboard takes on its tempo. Voice memos, MP3s and other audio load too: as a loop if they're a whole 1, 2, 4 or 8 bars at your tempo, otherwise as a one-shot you can trim.
+- **One sound:** a pad's ⚙ → **Save this sound** (or **Share…**), then send the file however you like. It's an ordinary WAV, with the tempo and length tucked inside it. Loaded onto a pad (⚙ on an empty pad → **Load a sound file**), it lands on the grid as a loop of the right length; an empty soundboard takes on its tempo. Voice memos, MP3s and other audio load too: as a loop if they're a whole 1, 2, 4 or 8 bars at your tempo, otherwise as a one-shot you can trim.
 
 ## Research & design notes
 

@@ -251,9 +251,7 @@ $('padRerec').onclick = async () => {
 };
 // One pad's sound as a WAV, exactly as it loops. The tempo and length ride along inside the
 // file, so another Loopsy Doopsy can drop it straight onto its grid.
-$('padSend').onclick = () => {
-  const pad = sheetPad;
-  if (!pad?.buffer) return;
+function padSoundFile(pad) {
   const meta = {
     app: 'loopsy',
     v: 1,
@@ -264,8 +262,24 @@ $('padSend').onclick = () => {
     mode: pad.mode,
   };
   const board = (projects.current?.name ?? 'loopsy').replace(/[^\w-]+/g, '-');
-  share([{ blob: encodeWav(pad.buffer.getChannelData(0), pad.buffer.sampleRate, meta), name: `${board}-pad${pad.index + 1}.wav` }], `Pad ${pad.index + 1}`);
+  return { blob: encodeWav(pad.buffer.getChannelData(0), pad.buffer.sampleRate, meta), name: `${board}-pad${pad.index + 1}.wav` };
+}
+// Save always downloads the file; Share (where the device can share files) opens the share sheet.
+$('padSave').onclick = () => {
+  if (!sheetPad?.buffer) return;
+  const f = padSoundFile(sheetPad);
+  download([f]);
+  toast(`Saved ${f.name} to your downloads`);
 };
+$('padShare').onclick = () => sheetPad?.buffer && share([padSoundFile(sheetPad)], `Pad ${sheetPad.index + 1}`);
+const canShareFiles = (() => {
+  try {
+    return !!navigator.canShare?.({ files: [new File(['x'], 'x.wav', { type: 'audio/wav' })] });
+  } catch {
+    return false;
+  }
+})();
+$('padShare').hidden = !canShareFiles;
 $('padLoad').onclick = () => $('padFile').click();
 $('padFile').onchange = (e) => {
   const f = e.target.files[0];
@@ -834,12 +848,17 @@ async function share(files, title) {
       if (e.name === 'NotAllowedError') return toast('Ready to send', 'Share', () => share(files, title));
     }
   }
-  for (const f of list) {
+  download(files);
+}
+
+// Save files straight to the device (Downloads, or Files on an iPhone).
+function download(files) {
+  for (const f of files) {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(f);
+    a.href = URL.createObjectURL(f.blob);
     a.download = f.name;
     a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
 }
 

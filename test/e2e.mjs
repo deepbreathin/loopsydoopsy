@@ -153,7 +153,7 @@ try {
   // Send pad 2's sound as a file, then load it onto pad 3: it comes back as a 2-bar loop.
   const longPress = (i) => pads.nth(i).locator('.cog').click(); // the ⚙ opens a pad's options
   await longPress(1);
-  const [padWav] = await Promise.all([page.waitForEvent('download'), page.click('#padSend')]);
+  const [padWav] = await Promise.all([page.waitForEvent('download'), page.click('#padSave')]);
   const padPath = shots + 'pad.wav';
   await padWav.saveAs(padPath);
   await page.click('#padSheet .close');

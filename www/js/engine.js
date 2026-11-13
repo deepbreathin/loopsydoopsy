@@ -141,12 +141,17 @@ export class Engine extends EventTarget {
     };
     // The microphone chosen in Settings (kept per device, not in soundboards); if it has been
     // unplugged or switched off, fall back to the default one.
+    if (!navigator.mediaDevices?.getUserMedia) throw Object.assign(new Error('no getUserMedia'), { name: 'Unsupported' });
+    // Some devices refuse particular settings; step down to "any microphone" rather than fail.
+    const tries = [this.micId ? { ...audio, deviceId: { exact: this.micId } } : null, audio, true].filter(Boolean);
     let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: this.micId ? { ...audio, deviceId: { exact: this.micId } } : audio });
-    } catch (e) {
-      if (!this.micId || e.name === 'NotAllowedError') throw e;
-      stream = await navigator.mediaDevices.getUserMedia({ audio });
+    for (let i = 0; i < tries.length; i++) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: tries[i] });
+        break;
+      } catch (e) {
+        if (e.name === 'NotAllowedError' || e.name === 'SecurityError' || i === tries.length - 1) throw e;
+      }
     }
     const ctx = this.ctx;
     const src = ctx.createMediaStreamSource(stream);

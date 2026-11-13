@@ -264,6 +264,27 @@
       </form>
     </dialog>
 
+    <!-- Microphone: ask first, and help when it can't be opened -->
+    <dialog class="sheet" id="micSheet">
+      <form method="dialog">
+        <section data-mic="ask" class="steps">
+          <h2>🎤 Can Loopsy use your microphone?</h2>
+          <p class="sub">It's needed to record your voice. Your sounds stay on this device; nothing is uploaded.</p>
+          <p class="sub">Your browser will ask next. Choose <b>Allow</b>, <b>While using the app</b> or <b>Only this time</b>.</p>
+          <button type="button" class="primary big-btn" id="micAllow">Allow microphone</button>
+          <button type="button" class="big-btn" id="micNotNow">Not now</button>
+        </section>
+        <section data-mic="help" class="steps" hidden>
+          <h2 id="micHelpTitle"></h2>
+          <p class="sub" id="micHelpText"></p>
+          <ol class="mic-steps" id="micHelpSteps"></ol>
+          <p class="sub mic-code" id="micHelpCode"></p>
+          <button type="button" class="primary big-btn" id="micRetry">Try again</button>
+          <button type="button" class="big-btn" id="micClose">Close</button>
+        </section>
+      </form>
+    </dialog>
+
     <!-- Help & suggestions -->
     <dialog class="sheet wide" id="helpBoxSheet">
       <form method="dialog">

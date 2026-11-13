@@ -6,6 +6,7 @@ import { pitchRange } from './pitch.js';
 import { Projects } from './projects.js';
 import { SongEditor } from './song.js';
 import { HelpBox } from './help.js';
+import { MicGate } from './mic.js';
 import { VERSION } from './version.js';
 import { TrimEditor } from './trim.js';
 import * as store from './storage.js';
@@ -76,10 +77,10 @@ function toast(msg, action, fn) {
   toastTimer = setTimeout(() => ($('toast').hidden = true), action ? 5000 : 2600);
 }
 
-function micError(e) {
-  console.warn(e);
-  toast(e?.name === 'NotAllowedError' ? 'Microphone blocked — allow it in your phone’s settings' : 'Could not open the microphone');
-}
+// Asks for the microphone before it's first needed, and explains (with the fix) when it
+// can't be opened.
+const mic = new MicGate({ engine, toast: (...a) => toast(...a) });
+const micError = (e) => mic.help(e);
 
 // ---------- pads ----------
 
@@ -177,6 +178,7 @@ async function tap(pad, el) {
   switch (pad.state) {
     case 'empty':
       try {
+        if (!(await mic.ready())) break;
         await engine.record(pad);
       } catch (e) {
         micError(e);
@@ -242,6 +244,7 @@ $('padRerec').onclick = async () => {
   const pad = sheetPad;
   const snap = engine.snapshot(pad);
   $('padSheet').close();
+  if (!(await mic.ready())) return;
   try {
     await engine.record(pad);
     toast('Re-recording…', 'Undo', () => engine.restore(pad, snap));
@@ -371,6 +374,7 @@ function setLive(on) {
 
 async function startTake({ voice }) {
   await engine.init();
+  if (voice && !(await mic.ready())) return false;
   setLive(voice);
   try {
     if (voice) await engine.ensureMic();
@@ -400,6 +404,7 @@ $('recBtn').onclick = async () => {
 async function toggleSing() {
   if (engine.session && !settings.liveMic) {
     // Already recording the pads: add your voice from here on.
+    if (!(await mic.ready())) return;
     setLive(true);
     try {
       await engine.ensureMic();
@@ -706,6 +711,7 @@ $('latInput').onchange = (e) => {
   save();
 };
 $('calBtn').onclick = async () => {
+  if (!(await mic.ready())) return;
   const b = $('calBtn');
   b.disabled = true;
   b.textContent = 'Listening…';

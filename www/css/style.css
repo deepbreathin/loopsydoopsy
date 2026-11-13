@@ -1185,3 +1185,19 @@ div.needs-sound {
   padding: 6px 4px;
   font: inherit;
 }
+
+/* ---------- microphone sheet ---------- */
+
+.mic-steps {
+  margin: 4px 0 8px;
+  padding-left: 22px;
+  line-height: 1.5;
+}
+.mic-steps li {
+  margin: 4px 0;
+}
+.mic-code {
+  font-size: 12px;
+  opacity: 0.7;
+  word-break: break-word;
+}

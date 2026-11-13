@@ -7,7 +7,10 @@ name: Web app (GitHub Pages)
 # One-time setup: repo Settings → Pages → Build and deployment → Source: "GitHub Actions".
 
 on:
+  # Only main goes live. (Pushes to other branches mustn't start a run: they'd cancel a
+  # deploy of main that's still going, through the concurrency group below.)
   push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -21,7 +24,6 @@ concurrency:
 
 jobs:
   deploy:
-    # Only main goes live.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:

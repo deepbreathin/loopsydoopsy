@@ -2,6 +2,23 @@ import { applyEdits, barDur, beatDur, findOnset, median, mod, nextBoundary, peak
 import { blockPitch, pitchRange, pitchTrack } from './pitch.js';
 
 export const PAD_COUNT = 8;
+
+// iPhone / iPad (iPadOS reports itself as a Mac with a touch screen).
+const IOS =
+  typeof navigator !== 'undefined' &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
+const MIC_IDLE_SECONDS = 4; // iOS: let the microphone go this long after it was last needed
+
+// Safari's audio session (iOS 16.4+): 'playback' plays loops at full volume through the
+// speaker, even with the silent switch on; 'play-and-record' is needed while the mic is
+// open, and on iOS it can turn playback down or send it to the earpiece.
+function audioSession(type) {
+  try {
+    if (navigator.audioSession && navigator.audioSession.type !== type) navigator.audioSession.type = type;
+  } catch {
+    /* not supported */
+  }
+}
 export const PEAK_BINS = 180;
 export const LOOP_LENGTHS = [1, 2, 4, 8]; // bars; powers of two so every loop lines up
 const KEEP_SECONDS = 45; // how much mic history to keep for pre-roll / tails
@@ -100,6 +117,7 @@ export class Engine extends EventTarget {
   async setup() {
     const opts = { latencyHint: 'interactive' };
     if (this.contextRate) opts.sampleRate = this.contextRate;
+    if (IOS) audioSession('playback');
     const ctx = new (window.AudioContext || window.webkitAudioContext)(opts);
     this.ctx = ctx;
     ctx.resume();
@@ -142,8 +160,14 @@ export class Engine extends EventTarget {
   }
 
   async openMic() {
-    const streamP = this.openStream();
     const initP = this.init();
+    if (IOS) {
+      // Safari: have the audio engine (and its recorder) running before the mic opens;
+      // the other way round can leave the audio distorted. Then switch to recording mode.
+      await initP;
+      audioSession('play-and-record');
+    }
+    const streamP = this.openStream();
     let stream;
     try {
       stream = await streamP;
@@ -240,9 +264,10 @@ export class Engine extends EventTarget {
     await this.initP;
   }
 
-  async reopenMic() {
-    if (!this.mic) return;
+  // Close the microphone.
+  releaseMic() {
     const m = this.mic;
+    if (!m) return;
     this.mic = null;
     m.stream.getTracks().forEach((t) => t.stop());
     m.src.disconnect();
@@ -251,7 +276,24 @@ export class Engine extends EventTarget {
     m.live.disconnect();
     m.monitor.disconnect();
     this.micChunks = [];
+    this.inputLevel = 0;
+    if (IOS) audioSession('playback');
+  }
+
+  async reopenMic() {
+    if (!this.mic) return;
+    this.releaseMic();
     await this.ensureMic();
+  }
+
+  // Is anything using the microphone (or about to)?
+  micBusy() {
+    return (
+      !!this.micP ||
+      this.calibrating ||
+      (this.session && this.settings.liveMic) ||
+      this.pads.some((p) => p.rec || p.state === 'armed' || p.state === 'recording' || p.state === 'processing')
+    );
   }
 
   applyLiveSettings() {
@@ -350,6 +392,17 @@ export class Engine extends EventTarget {
     if (!this.ctx) return;
     const now = this.now;
     for (const pad of this.pads) this.updatePad(pad, now);
+    // iOS: an open microphone keeps the phone in "call" mode (quieter, sometimes the
+    // earpiece), so let it go once nothing needs it; the next recording reopens it.
+    if (IOS && this.mic) {
+      if (this.micBusy()) this.micIdleSince = 0;
+      else if (!this.micIdleSince) this.micIdleSince = now;
+      else if (now - this.micIdleSince > MIC_IDLE_SECONDS) {
+        this.micIdleSince = 0;
+        this.releaseMic();
+        this.emit('micreleased');
+      }
+    }
   }
 
   // ---------- count-in ----------
@@ -822,6 +875,15 @@ export class Engine extends EventTarget {
 
   // Plays a few clicks through the speaker and listens for them with the mic.
   async calibrate() {
+    this.calibrating = true;
+    try {
+      return await this.runCalibration();
+    } finally {
+      this.calibrating = false;
+    }
+  }
+
+  async runCalibration() {
     await this.ensureMic();
     const ctx = this.ctx;
     const t0 = this.now + 0.4;

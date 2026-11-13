@@ -24,6 +24,13 @@ Every visit opens on **Getting started** (tips for recording and lining loops up
 
 Chrome, Edge and Safari (iPhone, iPad and Mac) are the main targets, and Firefox works too. Firefox can't connect a microphone running at a different sample rate from the app's audio engine, so when that happens the app quietly restarts its engine at the microphone's rate (nothing is lost). Firefox on a computer can't install web apps, but it works in a tab.
 
+### iPhone and iPad (Safari)
+
+- **Microphone permission:** Apple makes web apps ask again each time they're opened. The first time, Loopsy shows a short "Can Loopsy use your microphone?" screen; after that it goes straight to Safari's own question. Once allowed, it stays allowed until the app is closed.
+- **Sound routing:** while a microphone is open, iOS puts the phone in "call" mode, which can turn playback down or send it to the earpiece (worse on iOS 26.2+). So on iOS Loopsy sets Safari's audio session to *playback* (full volume through the speaker, even with the silent switch on), switches to *play-and-record* only while recording, and lets the microphone go a few seconds after each recording.
+- **Start-up order:** the audio engine (and its recorder worklet) starts before the microphone opens, which avoids a Safari bug where audio comes out distorted.
+- Recording stops if you switch apps or lock the screen; headphones (wired, or AirPods) work well.
+
 ### FAQ & suggestions
 
 Menu → **FAQ & suggestions** has a searchable FAQ (in `www/js/help.js`, easy to add to) and a **Suggest** tab: a text box and a Send button, with nothing to sign up for. Messages go quietly into a Google Form you own, so they collect in your Google account (Responses tab, or a linked Sheet; you can turn on email notifications).

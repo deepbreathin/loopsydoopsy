@@ -122,7 +122,9 @@ export class MicGate {
     if (!window.isSecureContext) return this.wait(() => this.help({ name: 'Insecure' }));
     if (!navigator.mediaDevices?.getUserMedia) return this.wait(() => this.help({ name: 'Unsupported' }));
     const state = await permissionState();
-    if (state === 'granted' || (state !== 'denied' && state !== 'prompt' && remembered())) {
+    // Allowed before (iPhone asks again each session, Chrome after "Only this time"): skip
+    // our own screen and let the browser ask straight away.
+    if (state === 'granted' || (state !== 'denied' && remembered())) {
       try {
         await this.engine.ensureMic();
         return true;
@@ -131,7 +133,10 @@ export class MicGate {
       }
     }
     if (state === 'denied') return this.wait(() => this.help({ name: 'NotAllowedError' }));
-    return this.wait(() => this.step('ask'));
+    return this.wait(() => {
+      this.step('ask');
+      $('micIosNote').hidden = !browser().startsWith('ios');
+    });
   }
 
   wait(show) {

@@ -2,9 +2,7 @@
 
 A colourful loop recorder for your phone. There are eight pads. Tap one and it counts you in, records for exactly the number of bars you chose, then starts looping in time with everything else. Each pad shows its sound as a **circular waveform**, with a playhead sweeping round it, so you can always see where the loop starts and how long it is.
 
-[![Loopsy Doopsy in action: loops recorded on the pads, playheads sweeping round in time](docs/demo-preview.gif)](docs/demo.mp4)
-
-▶ **[Watch the demo](docs/demo.mp4)** (38 seconds, with sound)
+https://github.com/user-attachments/assets/96072218-3509-495d-8163-cfc0fa2d5149
 
 <img src="docs/screenshot.png" height="420" alt="Loopsy Doopsy on a phone: eight coloured pads, two with circular waveforms"> <img src="docs/unfolded.png" height="420" alt="Unfolded on a OnePlus Open: a 3×3 grid with the Sing tile as the ninth square">
 
@@ -17,7 +15,11 @@ It's an **installable web app (PWA)** for iPhone, iPad, Android and computers. I
 Every push to `main` publishes `www/` to **GitHub Pages**, at **https://loopsydoopsy.xyz** (custom domain; Settings → Pages must have **Enforce HTTPS** ticked, because browsers only allow the microphone on https). Open that link, then:
 
 - **iPhone / iPad:** Safari → Share → **Add to Home Screen**.
-- **Android:** Chrome → ⋮ → **Install app**.
+- **Android:** Chrome → ⋮ → *
+
+
+
+*Install app**.
 - **Computer:** Chrome or Edge → the install icon in the address bar (Safari on a Mac: File → Add to Dock). Keys: **1–8** tap the pads, **Space** plays/stops, **R** records.
 
 Every visit opens on **Getting started** (tips for recording and lining loops up). In a browser tab it also says **install it first** and shows the steps for their device (Menu → Getting started brings it back; Menu → Install the app has the steps too). After their first recording it reminds them once more. Installing matters: sounds are saved on the device, and browsers may clear a website's saved data if it isn't opened for a while (Safari after about a week), but they don't clear an installed app's. Once installed it also works offline.

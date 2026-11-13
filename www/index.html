@@ -418,11 +418,27 @@
       <small id="bootErrorMsg"></small>
     </div>
 
+    <!-- Opened over plain http: browsers block the microphone (and offline use) there. -->
+    <div class="boot-error" id="insecure" hidden>
+      <p><b>This page isn't using a secure connection (https)</b>, so your browser won't let it use the microphone.</p>
+      <a class="primary-link" id="insecureLink" href="#">Open the secure version</a>
+      <small>If that doesn't open, the site's secure certificate isn't ready yet: try again later.</small>
+    </div>
+
     <!-- Safety net, in plain script so it works even if the app's code fails to load:
          "Let's loop" always closes the welcome screen, and a start-up failure shows a fix. -->
     <script>
       (function () {
         var $ = function (id) { return document.getElementById(id); };
+        // Plain http: switch to https if it's there, otherwise say why the mic won't work.
+        if (location.protocol === 'http:' && !/^(localhost|127\.|\[::1\]$)/.test(location.hostname)) {
+          var secure = 'https://' + location.host + location.pathname + location.search + location.hash;
+          $('insecureLink').href = secure;
+          var warn = setTimeout(function () { $('insecure').hidden = false; }, 4000);
+          fetch('https://' + location.host + location.pathname.replace(/[^/]*$/, '') + 'manifest.webmanifest', { mode: 'no-cors', cache: 'no-store' })
+            .then(function () { clearTimeout(warn); location.replace(secure); })
+            .catch(function () { clearTimeout(warn); $('insecure').hidden = false; });
+        }
         function close() { $('splash').hidden = true; }
         $('startBtn').addEventListener('click', close);
         $('basicsBtn').addEventListener('click', close);

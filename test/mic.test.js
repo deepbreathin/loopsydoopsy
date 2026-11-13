@@ -36,3 +36,8 @@ test('the browser is recognised from its user agent', async () => {
     assert.ok(INSTALL[got]?.length && MIC_UNBLOCK[got]?.length, `steps for ${got}`);
   }
 });
+
+test('an insecure (http) page is named as the reason', () => {
+  const h = explain({ name: 'TypeError' }, 'android-chrome', false);
+  assert.match(h.title, /isn’t secure/);
+});

@@ -103,7 +103,9 @@ export class Engine extends EventTarget {
     const ctx = new (window.AudioContext || window.webkitAudioContext)(opts);
     this.ctx = ctx;
     ctx.resume();
-    await ctx.audioWorklet.addModule(new URL('./capture-worklet.js', import.meta.url));
+    // Recording needs an AudioWorklet, which browsers only offer on secure (https) pages;
+    // without it the pads still play.
+    if (ctx.audioWorklet) await ctx.audioWorklet.addModule(new URL('./capture-worklet.js', import.meta.url));
     this.master = ctx.createGain();
     // Stacking several vocal loops easily goes over full scale; a fast limiter keeps it clean.
     this.limiter = ctx.createDynamicsCompressor();
@@ -177,6 +179,7 @@ export class Engine extends EventTarget {
   }
 
   async connectMic(stream) {
+    if (!this.ctx.audioWorklet) throw Object.assign(new Error('recording needs a secure (https) page'), { name: 'Insecure' });
     let src;
     try {
       src = this.ctx.createMediaStreamSource(stream);
@@ -748,6 +751,7 @@ export class Engine extends EventTarget {
 
   async startSession() {
     await this.init();
+    if (!this.ctx.audioWorklet) throw Object.assign(new Error('recording needs a secure (https) page'), { name: 'Insecure' });
     if (this.settings.liveMic) await this.ensureMic();
     const ctx = this.ctx;
     const merger = ctx.createChannelMerger(2);

@@ -38,8 +38,15 @@ async function permissionState() {
 
 
 // What went wrong, in plain words, and what to do about it.
-export function explain(e, b = browser()) {
+export function explain(e, b = browser(), secure = globalThis.isSecureContext !== false) {
   const name = e?.name || '';
+  if (!secure) {
+    return {
+      title: 'This page isn’t secure (http), so the microphone is off',
+      text: 'Browsers only allow the microphone on secure (https) pages. Open the secure address instead:',
+      steps: [`https://${globalThis.location?.host ?? ''}`, 'If that won’t open yet, the site’s secure certificate is still being set up: try again later.'],
+    };
+  }
   if (name === 'Unsupported' || b === 'inapp') {
     return {
       title: 'This browser can’t use the microphone',
@@ -112,7 +119,8 @@ export class MicGate {
   // Resolves true once the microphone is open (asking first if need be), false if not.
   async ready() {
     if (this.engine.mic) return true;
-    if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) return this.wait(() => this.help({ name: 'Unsupported' }));
+    if (!window.isSecureContext) return this.wait(() => this.help({ name: 'Insecure' }));
+    if (!navigator.mediaDevices?.getUserMedia) return this.wait(() => this.help({ name: 'Unsupported' }));
     const state = await permissionState();
     if (state === 'granted' || (state !== 'denied' && state !== 'prompt' && remembered())) {
       try {
@@ -193,11 +201,14 @@ export class MicGate {
     $('checkSend').disabled = true;
     $('checkLevel').hidden = true;
     const b = browser();
+    const now = new Date();
+    row(null, 'Time', `${now.toLocaleString()} (${Intl.DateTimeFormat().resolvedOptions().timeZone ?? ''})`);
+    row(null, 'Address', location.href);
     row(null, 'Browser', `${NAMES[b]} · app version ${VERSION}`);
     row(null, 'Device', navigator.userAgent);
     row(null, 'Installed as an app', matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'yes' : 'no (in a browser tab)');
     row(window.isSecureContext, 'Secure connection (https)', location.protocol);
-    row(api, 'This browser can use a microphone', api ? '' : b === 'inapp' ? 'this is another app’s built-in browser: open the link in Chrome or Safari' : 'not available here');
+    row(api, 'This browser can use a microphone', api ? '' : !window.isSecureContext ? 'not on an insecure (http) page: open the https address' : b === 'inapp' ? 'this is another app’s built-in browser: open the link in Chrome or Safari' : 'not available here');
     row(null, 'Permission', await within(permissionState(), 3000, 'no answer'));
     let stream = null;
     if (api) {
@@ -216,7 +227,7 @@ export class MicGate {
       }
       lines[lines.length - 1] = li.textContent;
     }
-    try {
+    if (api) try {
       const mics = (await within(navigator.mediaDevices.enumerateDevices(), 3000, [])).filter((d) => d.kind === 'audioinput');
       row(mics.length > 0, 'Microphones found', mics.length ? mics.map((d) => d.label || 'unnamed').join(', ') : 'none');
     } catch (e) {

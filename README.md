@@ -10,7 +10,7 @@ It's an **installable web app (PWA)** for iPhone, iPad, Android and computers. I
 
 ## Use it on iPhone, Android or a computer (web app)
 
-Every push to `main` publishes `www/` to **GitHub Pages**, at **https://deepbreathin.github.io/loopsydoopsy/**. Open that link, then:
+Every push to `main` publishes `www/` to **GitHub Pages**, at **https://loopsydoopsy.xyz** (custom domain; Settings → Pages must have **Enforce HTTPS** ticked, because browsers only allow the microphone on https). Open that link, then:
 
 - **iPhone / iPad:** Safari → Share → **Add to Home Screen**.
 - **Android:** Chrome → ⋮ → **Install app**.

@@ -1238,3 +1238,13 @@ details.others ol {
   font: inherit;
   font-size: 14px;
 }
+.primary-link {
+  display: block;
+  text-align: center;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #062;
+  font-weight: 750;
+  text-decoration: none;
+}

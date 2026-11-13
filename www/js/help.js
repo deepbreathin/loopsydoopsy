@@ -145,7 +145,7 @@ export class HelpBox {
     const info = $('suggestDevice').checked ? device() : '';
     if (FORM) {
       const label = { idea: 'Idea', bug: 'Problem', other: 'Other' }[kind] || 'Other';
-      const body = new URLSearchParams({ [FORM.field]: `[${label}] ${text}\n\n— app ${APP_VERSION}${info ? ` · ${info}` : ''}` });
+      const body = new URLSearchParams({ [FORM.field]: `[${label}] ${text}\n\n— ${new Date().toLocaleString()} · app ${APP_VERSION}${info ? ` · ${info}` : ''}` });
       $('sendSuggestion').disabled = true;
       try {
         // Google doesn't let other sites read its reply, so "no-cors": it's sent, we just can't see the answer.

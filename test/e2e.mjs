@@ -75,7 +75,7 @@ try {
   });
   assert.ok(syncErr < 1e-6, 'new recording starts when the playing loop comes round');
   await until(() => loopsy.engine.pads[1].state === 'ready', null, 9000);
-  await until(() => loopsy.engine.pads[1].pitchTrack && !loopsy.engine.pads[1].rec, null, 6000);
+  await until(() => !loopsy.engine.pads[1].rec, null, 6000);
   await sleep(700);
   await page.screenshot({ path: shots + '4-two-loops.png' });
 

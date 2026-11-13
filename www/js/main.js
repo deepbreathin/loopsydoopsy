@@ -2,7 +2,6 @@ import { Engine, LOOP_LENGTHS, PAD_COUNT } from './engine.js';
 import { decodeWavBlob, readAudioFile, toMp3 } from './audio-files.js';
 import { drawPad, drawSing } from './pad-view.js';
 import * as layout from './layout.js';
-import { pitchRange } from './pitch.js';
 import { Projects } from './projects.js';
 import { HelpBox } from './help.js';
 import { MicGate, fillOthers } from './mic.js';
@@ -104,7 +103,7 @@ function buildPads() {
   el.innerHTML = '<canvas></canvas>';
   grid.append(el);
   const canvas = el.querySelector('canvas');
-  singView = { el, canvas, g: canvas.getContext('2d'), w: 0, h: 0, range: { lo: 52, hi: 69 } };
+  singView = { el, canvas, g: canvas.getContext('2d'), w: 0, h: 0 };
   el.addEventListener('click', toggleSing);
   const relayout = () => {
     layout.apply(grid, [...padEls.map((p) => p.el), el]);
@@ -115,7 +114,8 @@ function buildPads() {
 }
 
 function sizeCanvases() {
-  const dpr = window.devicePixelRatio || 1;
+  // Sharp enough without the cost of drawing at 3× (which competes with the audio on phones).
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
   for (const p of [...padEls, singView]) {
     const r = p.el.getBoundingClientRect();
     p.w = r.width;
@@ -580,6 +580,27 @@ const checks = {
   setMonitor: 'monitor',
 };
 
+// Sound: "smooth" (bigger audio buffers, no crackles) or "fast" (lowest delay). Kept on
+// this device. Phones (Android) and Firefox crackle with the smallest buffers, so they
+// start on smooth.
+const LAT_KEY = 'latencyMode';
+try {
+  engine.latencyMode = localStorage.getItem(LAT_KEY) || (/Android|Firefox/.test(navigator.userAgent) ? 'smooth' : 'fast');
+} catch {
+  engine.latencyMode = 'smooth';
+}
+for (const r of document.querySelectorAll('input[name="latMode"]')) {
+  r.onchange = async () => {
+    try {
+      localStorage.setItem(LAT_KEY, r.value);
+    } catch {
+      /* storage blocked */
+    }
+    await engine.setLatencyMode(r.value);
+    toast(r.value === 'smooth' ? 'Smooth sound: fewer crackles' : 'Fast sound: lowest delay');
+  };
+}
+
 // Microphone choice is kept on this device (device ids mean nothing on another one).
 const MIC_KEY = 'micId';
 try {
@@ -625,6 +646,7 @@ navigator.mediaDevices?.addEventListener?.('devicechange', () => $('settingsShee
 
 function openSettings() {
   listMics();
+  for (const r of document.querySelectorAll('input[name="latMode"]')) r.checked = r.value === engine.latencyMode;
   $('bpmInput').value = settings.bpm;
   $('bpbInput').value = settings.beatsPerBar;
   $('latInput').value = settings.latencyMs ?? '';
@@ -866,27 +888,13 @@ function hintText(t) {
   return 'Tap to play · ⚙ for a pad’s options · Rec records what you play';
 }
 
-// Pitch for a pad's strip: from its pitch contour while it plays, or the mic while it records.
-const TRAIL = 12;
-function padPitch(pad, phase) {
-  if (pad.state === 'ready') {
-    const track = pad.pitchTrack;
-    if (!track || phase == null || !pad.pitchRange) return null;
-    const i = Math.floor(phase * track.length);
-    const trail = [];
-    for (let k = TRAIL; k > 0; k--) trail.push(track[(i - k + track.length) % track.length]);
-    return { now: track[i], trail, ...pad.pitchRange };
-  }
-  if (pad.state === 'recording' || pad.state === 'armed') {
-    const p = engine.pitches;
-    const range = pitchRange(p.subarray(p.length - 80)) ?? { lo: 50, hi: 70 };
-    return { now: p[p.length - 1], trail: Array.from(p.subarray(p.length - 1 - TRAIL, p.length - 1)), ...range };
-  }
-  return null;
-}
-
 let lastHint = '';
+// Phones redraw at 30 frames a second: smooth enough for sweeping playheads, and it leaves
+// the processor free for the audio (heavy drawing can make the sound crackle).
+const coarse = matchMedia('(pointer: coarse)').matches;
+let skip = false;
 function frame() {
+  if (coarse && (skip = !skip)) return requestAnimationFrame(frame);
   const t = engine.heardTime;
   const bpb = settings.beatsPerBar;
   const beat = engine.beat;
@@ -909,7 +917,6 @@ function frame() {
       time: t,
       lengthLabel: plural(settings.loopBars, 'bar'),
       phase,
-      pitch: padPitch(pad, phase),
     };
     if (pad.pending?.type === 'start') {
       const beats = Math.ceil((pad.pending.at - t) / beat - 1e-3);
@@ -952,22 +959,12 @@ function frame() {
   $('beatDots').classList.toggle('count-in', !!armed);
 
   if (singView?.w) {
-    // Let the pitch view drift to follow your voice rather than jumping around.
-    const target = pitchRange(engine.pitches.subarray(engine.pitches.length - 100));
-    if (target) {
-      const mid = (target.lo + target.hi) / 2;
-      const span = Math.max(14, target.hi - target.lo);
-      singView.range.lo += (mid - span / 2 - singView.range.lo) * 0.04;
-      singView.range.hi += (mid + span / 2 - singView.range.hi) * 0.04;
-    }
     drawSing(singView.g, singView.w, singView.h, {
       recording: !!engine.session && settings.liveMic,
       padRec: !!engine.session && !settings.liveMic,
       live: settings.liveMic,
       micOpen: !!engine.mic,
       levels: engine.levels,
-      pitches: engine.pitches,
-      view: singView.range,
       elapsed: engine.session ? fmtTime((Date.now() - sessionStarted) / 1000) : '',
     });
     singView.el.classList.toggle('recording', !!engine.session && settings.liveMic);

@@ -1,5 +1,11 @@
-// Offline support: serve the app shell from cache, refresh it in the background.
-const CACHE = 'loopsy-v19';
+// Offline support, one whole version at a time.
+//
+// Each published version gets its own complete cache, filled in one go when this worker
+// installs; pages are served only from it, so old and new files can never be mixed. A new
+// version is a new sw.js (BUILD is stamped on publish): the browser installs it alongside,
+// it takes over once every file is in, and the page reloads into it.
+const BUILD = '__BUILD__';
+const CACHE = `loopsy-${BUILD}`;
 const SHELL = [
   './',
   'index.html',
@@ -31,35 +37,45 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  // Fetch fresh copies (not the browser's HTTP cache) so a new version is all one version.
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))));
-  self.skipWaiting();
+  e.waitUntil(
+    (async () => {
+      const cache = await caches.open(CACHE);
+      // "?v=" gets this version's files fresh past every cache on the way (GitHub's servers
+      // keep files for a few minutes); they're stored under their plain names.
+      await Promise.all(
+        SHELL.map(async (u) => {
+          const res = await fetch(`${u}${u.includes('?') ? '&' : '?'}v=${BUILD}`, { cache: 'reload' });
+          if (!res.ok) throw new Error(`${u}: ${res.status}`);
+          await cache.put(u, res);
+        }),
+      );
+      await self.skipWaiting();
+    })(),
+  );
 });
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))),
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+      await self.clients.claim();
+    })(),
   );
-  self.clients.claim();
 });
 
-// Network first, so a new version shows up as soon as it's published; the cache is the
-// fallback when offline (or the network is very slow).
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   e.respondWith(
     (async () => {
       const cache = await caches.open(CACHE);
+      const hit = (await cache.match(e.request, { ignoreSearch: true })) || (e.request.mode === 'navigate' && (await cache.match('./')));
+      if (hit) return hit;
       try {
-        const res = await Promise.race([
-          fetch(e.request.url, { cache: 'no-cache' }), // revalidate, don't trust the HTTP cache
-          new Promise((_, reject) => setTimeout(() => reject(new Error('slow')), 10000)),
-        ]);
-        if (res.ok) cache.put(e.request, res.clone());
-        return res;
+        return await fetch(e.request);
       } catch {
-        return (await cache.match(e.request, { ignoreSearch: true })) || (await cache.match('./')) || Response.error();
+        return Response.error();
       }
     })(),
   );

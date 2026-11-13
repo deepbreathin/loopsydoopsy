@@ -28,6 +28,8 @@ test('the browser is recognised from its user agent', async () => {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36 Edg/141.0': 'desktop-edge',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15': 'mac-safari',
   };
+  assert.equal(browserFrom('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Mobile Safari/537.36', { brave: true }), 'android-brave');
+  assert.ok(INSTALL['android-brave'].length && MIC_UNBLOCK['android-brave'].length);
   for (const [ua, want] of Object.entries(cases)) {
     const got = browserFrom(ua);
     assert.equal(got, want, ua);

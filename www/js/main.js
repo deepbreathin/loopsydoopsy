@@ -617,7 +617,10 @@ $('setMic').onchange = async (e) => {
   }
   await engine.reopenMic().catch(micError);
 };
-$('micTestBtn').onclick = () => mic.check();
+$('micTestBtn').onclick = () => {
+  $('settingsSheet').close();
+  mic.check();
+};
 navigator.mediaDevices?.addEventListener?.('devicechange', () => $('settingsSheet').open && listMics());
 
 function openSettings() {
@@ -1036,6 +1039,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker
     .register('sw.js')
     .then((reg) => {
+      reg.update().catch(() => {});
       // An installed app is often resumed rather than reopened, so look for updates then too.
       document.addEventListener('visibilitychange', () => !document.hidden && reg.update().catch(() => {}));
     })
@@ -1055,3 +1059,8 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 
 window.loopsy = { engine, settings, projects, getSong: () => song, setSong: (s) => (song = s) }; // handy for debugging
 window.loopsyReady = true; // tells the safety net in index.html that the app started
+
+// Never fail silently: if something breaks after starting, say so (and how to recover).
+const oops = (msg) => toast(`Something went wrong: ${String(msg).slice(0, 90)}`, 'Fix', () => $('updateBtn').click());
+window.addEventListener('error', (e) => e.message && !/ResizeObserver|Script error/.test(e.message) && oops(e.message));
+window.addEventListener('unhandledrejection', (e) => oops(e.reason?.message || e.reason));

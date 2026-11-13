@@ -130,9 +130,29 @@ export class Engine extends EventTarget {
 
   // ---------- microphone ----------
 
-  async ensureMic() {
-    await this.init();
-    if (this.mic) return this.mic;
+  // Open the microphone. The browser is asked straight away, in the same moment as the tap
+  // that called this (some browsers, Brave among them, only show their question then);
+  // the audio engine starts alongside.
+  ensureMic() {
+    if (this.mic) return Promise.resolve(this.mic);
+    this.micP ??= this.openMic().finally(() => (this.micP = null));
+    return this.micP;
+  }
+
+  async openMic() {
+    const streamP = this.openStream();
+    const initP = this.init();
+    let stream;
+    try {
+      stream = await streamP;
+    } finally {
+      await initP.catch(() => {});
+    }
+    await initP;
+    return this.connectMic(stream);
+  }
+
+  async openStream() {
     const audio = {
       echoCancellation: !!this.settings.echoCancel,
       noiseSuppression: false,
@@ -153,6 +173,10 @@ export class Engine extends EventTarget {
         if (e.name === 'NotAllowedError' || e.name === 'SecurityError' || i === tries.length - 1) throw e;
       }
     }
+    return stream;
+  }
+
+  async connectMic(stream) {
     let src;
     try {
       src = this.ctx.createMediaStreamSource(stream);

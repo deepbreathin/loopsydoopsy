@@ -25,6 +25,9 @@ function remember() {
   }
 }
 
+// A promise's result, or `fallback` if it takes longer than `ms` (so nothing hangs silently).
+const within = (p, ms, fallback) => Promise.race([p, new Promise((r) => setTimeout(() => r(fallback), ms))]);
+
 async function permissionState() {
   try {
     return (await navigator.permissions.query({ name: 'microphone' })).state; // granted | denied | prompt
@@ -94,7 +97,7 @@ export class MicGate {
     $('micAllow').onclick = () => this.open();
     $('micRetry').onclick = () => this.open();
     $('micNotNow').onclick = $('micClose').onclick = () => this.dlg.close();
-    $('micCheckBtn').onclick = $('checkAgain').onclick = () => this.check();
+    $('micCheckBtn').onclick = $('micCheckBtn2').onclick = $('checkAgain').onclick = () => this.check();
     $('checkClose').onclick = () => this.dlg.close();
     $('checkSend').onclick = () => this.sendReport();
     this.dlg.addEventListener('close', () => this.settle(false));
@@ -134,6 +137,13 @@ export class MicGate {
 
   step(name) {
     for (const s of this.dlg.querySelectorAll('[data-mic]')) s.hidden = s.dataset.mic !== name;
+    this.status('');
+  }
+
+  // A line under the buttons, so a tap always visibly does something.
+  status(text) {
+    $('micStatus').textContent = text;
+    $('micStatus').hidden = !text;
   }
 
   // Show what went wrong (also used for mic errors outside this flow).
@@ -163,6 +173,10 @@ export class MicGate {
   // ---------- microphone check: every step, ✓ or ✗, and a report to send ----------
 
   async check() {
+    // Ask for the microphone first thing, in the moment of the tap.
+    const api = !!navigator.mediaDevices?.getUserMedia;
+    const asking = api ? navigator.mediaDevices.getUserMedia({ audio: true }) : null;
+    asking?.catch(() => {});
     this.step('check');
     if (!this.dlg.open) this.dlg.showModal();
     const list = $('checkList');
@@ -183,14 +197,14 @@ export class MicGate {
     row(null, 'Device', navigator.userAgent);
     row(null, 'Installed as an app', matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'yes' : 'no (in a browser tab)');
     row(window.isSecureContext, 'Secure connection (https)', location.protocol);
-    const api = !!navigator.mediaDevices?.getUserMedia;
     row(api, 'This browser can use a microphone', api ? '' : b === 'inapp' ? 'this is another app’s built-in browser: open the link in Chrome or Safari' : 'not available here');
-    row(null, 'Permission', await permissionState());
+    row(null, 'Permission', await within(permissionState(), 3000, 'no answer'));
     let stream = null;
     if (api) {
-      const li = row(null, 'Opening the microphone…');
+      const li = row(null, 'Opening the microphone… (answer your browser’s question if it asks)');
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream = await within(asking, 20000, null);
+        if (!stream) throw Object.assign(new Error('the browser never answered — no question appeared, or it was ignored'), { name: 'NoAnswer' });
         const t = stream.getAudioTracks()[0];
         const st = t?.getSettings?.() ?? {};
         li.className = 'ok';
@@ -203,7 +217,7 @@ export class MicGate {
       lines[lines.length - 1] = li.textContent;
     }
     try {
-      const mics = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput');
+      const mics = (await within(navigator.mediaDevices.enumerateDevices(), 3000, [])).filter((d) => d.kind === 'audioinput');
       row(mics.length > 0, 'Microphones found', mics.length ? mics.map((d) => d.label || 'unnamed').join(', ') : 'none');
     } catch (e) {
       row(false, 'Microphones found', e.name);
@@ -243,7 +257,8 @@ export class MicGate {
     if (api) {
       const li = row(null, 'Starting Loopsy’s recorder…');
       try {
-        await this.engine.ensureMic();
+        const ok = await within(this.engine.ensureMic(), 10000, null);
+        if (!ok) throw Object.assign(new Error('it took too long to start'), { name: 'Timeout' });
         li.className = 'ok';
         li.textContent = `✓ Loopsy’s recorder is ready (${this.engine.ctx.sampleRate} Hz)`;
       } catch (e) {
@@ -270,9 +285,20 @@ export class MicGate {
 
   // The "Allow" / "Try again" tap: the browser shows its own question now.
   async open() {
+    // Ask right now, in the moment of the tap (nothing awaited before this).
+    const opening = this.engine.ensureMic();
     $('micAllow').disabled = $('micRetry').disabled = true;
+    this.status('Asking your browser for the microphone… answer its question (usually at the top or bottom of the screen).');
+    const slow = setTimeout(() => {
+      const b = browser();
+      this.status(
+        `Your browser hasn’t answered yet. If it isn’t showing a question, it may be blocked${b.endsWith('brave') ? ': in Brave, tap the lion icon and turn Shields down for this site, then try again' : ''}. “Run a microphone check” shows exactly where it’s stuck.`,
+      );
+      $('micAllow').disabled = $('micRetry').disabled = false;
+    }, 6000);
     try {
-      await this.engine.ensureMic();
+      await opening;
+      clearTimeout(slow);
       remember();
       const done = this.pending;
       this.pending = null;
@@ -280,6 +306,7 @@ export class MicGate {
       if (done) done(true);
       else this.toast('Microphone ready');
     } catch (e) {
+      clearTimeout(slow);
       this.help(e);
     } finally {
       $('micAllow').disabled = $('micRetry').disabled = false;

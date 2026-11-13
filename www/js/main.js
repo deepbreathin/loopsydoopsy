@@ -6,6 +6,7 @@ import { pitchRange } from './pitch.js';
 import { Projects } from './projects.js';
 import { SongEditor } from './song.js';
 import { HelpBox } from './help.js';
+import { VERSION } from './version.js';
 import { TrimEditor } from './trim.js';
 import * as store from './storage.js';
 import { encodeWav } from './wav.js';
@@ -1049,6 +1050,21 @@ $('basicsBtn').onclick = () => {
 };
 // Phones only let audio start from a gesture; unlock on the first touch anywhere.
 document.addEventListener('pointerdown', () => engine.init(), { once: true, capture: true });
+
+// Version, and a way to make sure you're on the newest one: drop the saved copy of the app
+// and reload. (Soundboards and recordings live in separate storage, so they're untouched.)
+$('appVersion').textContent = VERSION.startsWith('__') ? 'dev' : VERSION;
+$('updateBtn').onclick = async () => {
+  $('updateBtn').textContent = 'Updating…';
+  await projects.flush();
+  try {
+    for (const reg of (await navigator.serviceWorker?.getRegistrations?.()) ?? []) await reg.unregister();
+    for (const key of (await caches?.keys?.()) ?? []) await caches.delete(key);
+  } catch {
+    /* nothing cached */
+  }
+  location.reload();
+};
 
 // Offline support (and what makes it installable).
 if ('serviceWorker' in navigator && location.protocol === 'https:') {

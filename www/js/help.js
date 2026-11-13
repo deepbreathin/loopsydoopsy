@@ -1,3 +1,4 @@
+import { VERSION as APP_VERSION } from './version.js';
 // The FAQ & suggestions box: an FAQ you can search, and a text box for ideas and problem
 // reports. No server of our own: suggestions are posted straight into a Google Form.
 
@@ -7,7 +8,6 @@
 export const FEEDBACK_FORM_LINK = 'https://docs.google.com/forms/d/e/1FAIpQLScPXaJXo8Fu12gVzJS1PZayOXg5H12JXf3oEtvrjMGAwvu8_w/viewform?usp=pp_url&entry.942833866=example';
 
 const GITHUB_REPO = 'deepbreathin/loopsydoopsy';
-const APP_VERSION = '2026.11';
 
 // From a pre-filled link, where to post and which field the text goes in.
 export function formTarget(link) {

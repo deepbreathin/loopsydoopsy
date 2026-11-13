@@ -1171,3 +1171,17 @@ div.needs-sound {
   left: 50px;
   top: 16px;
 }
+
+.menu + .version {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  margin: 12px 0 0;
+}
+.version button {
+  color: var(--text);
+  text-decoration: underline;
+  background: none;
+  padding: 6px 4px;
+  font: inherit;
+}

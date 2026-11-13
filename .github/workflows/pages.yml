@@ -33,6 +33,8 @@ jobs:
         with:
           node-version: 22
       - run: npm test
+      - name: Stamp the version
+        run: sed -i "s/__BUILD__/$(date -u +%Y-%m-%d)-${GITHUB_SHA::7}/" www/js/version.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

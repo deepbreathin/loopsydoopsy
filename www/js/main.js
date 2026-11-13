@@ -617,6 +617,7 @@ $('setMic').onchange = async (e) => {
   }
   await engine.reopenMic().catch(micError);
 };
+$('micTestBtn').onclick = () => mic.check();
 navigator.mediaDevices?.addEventListener?.('devicechange', () => $('settingsSheet').open && listMics());
 
 function openSettings() {

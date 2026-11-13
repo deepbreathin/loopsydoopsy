@@ -1172,3 +1172,53 @@ details.others ol {
   color: var(--muted);
   word-break: break-word;
 }
+
+/* ---------- microphone check ---------- */
+
+.check-list {
+  list-style: none;
+  margin: 4px 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.check-list li {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.check-list li.ok {
+  color: #5ee08a;
+}
+.check-list li.bad {
+  color: #ff7a86;
+}
+.check-list li.info {
+  color: var(--muted);
+}
+.level {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.level i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #5ee08a;
+  transition: width 60ms;
+}
+.wide-btn {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  background: var(--panel-2);
+  font-weight: 650;
+  margin: 4px 0;
+}

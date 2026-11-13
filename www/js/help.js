@@ -16,6 +16,14 @@ export function formTarget(link) {
 }
 const FORM = formTarget(FEEDBACK_FORM_LINK);
 
+// Post a message to the feedback form (used by the microphone check's report too).
+export async function sendFeedback(text) {
+  if (!FORM) return false;
+  // Google doesn't let other sites read its reply ("no-cors"): it's sent, we just can't see the answer.
+  await fetch(FORM.action, { method: 'POST', mode: 'no-cors', body: new URLSearchParams({ [FORM.field]: text }) });
+  return true;
+}
+
 const $ = (id) => document.getElementById(id);
 
 export const FAQ = [

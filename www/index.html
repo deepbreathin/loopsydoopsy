@@ -151,6 +151,7 @@
         <label class="row">Microphone
           <select id="setMic"><option value="">Default</option></select>
         </label>
+        <button type="button" class="wide-btn" id="micTestBtn">🔍 Microphone check</button>
         <p class="sub" id="micNote">Pick the mic that sounds best. With Bluetooth headphones, the phone's own mic usually sounds better: a Bluetooth headset's mic often switches it into a muffled “phone call” mode.</p>
         <label class="row">Mic boost <span class="val" id="boostVal">off</span>
           <input type="range" id="setBoost" min="1" max="4" step="0.05" />
@@ -260,7 +261,17 @@
           <details class="others" id="micOthers" hidden><summary>Using a different browser?</summary><div id="micOthersList"></div></details>
           <p class="sub mic-code" id="micHelpCode"></p>
           <button type="button" class="primary big-btn" id="micRetry">Try again</button>
+          <button type="button" class="big-btn" id="micCheckBtn">🔍 Run a microphone check</button>
           <button type="button" class="big-btn" id="micClose">Close</button>
+        </section>
+        <section data-mic="check" class="steps" hidden>
+          <h2>🔍 Microphone check</h2>
+          <p class="sub">Each step in turn. If one fails, it says why. Make a sound when it's listening.</p>
+          <ul class="check-list" id="checkList"></ul>
+          <div class="level" id="checkLevel" hidden><i></i></div>
+          <button type="button" class="primary big-btn" id="checkSend" disabled>📨 Send this report</button>
+          <button type="button" class="big-btn" id="checkAgain">Run it again</button>
+          <button type="button" class="big-btn" id="checkClose">Close</button>
         </section>
       </form>
     </dialog>

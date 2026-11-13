@@ -3,7 +3,6 @@ import { blockPitch, pitchRange, pitchTrack } from './pitch.js';
 
 export const PAD_COUNT = 8;
 export const PEAK_BINS = 180;
-const SONG_AHEAD = 0.3; // seconds ahead that song section changes are scheduled
 export const LOOP_LENGTHS = [1, 2, 4, 8]; // bars; powers of two so every loop lines up
 const KEEP_SECONDS = 45; // how much mic history to keep for pre-roll / tails
 const EDGE_FADE = 0.004; // seconds faded at loop seams
@@ -59,7 +58,6 @@ export class Engine extends EventTarget {
     this.levels = new Float32Array(160); // recent mic loudness, newest last (one per ~43 ms)
     this.pitches = new Float32Array(160).fill(NaN); // recent mic pitch, same clock as levels
     this.session = null;
-    this.song = null;
   }
 
   emit(type, detail) {
@@ -100,7 +98,9 @@ export class Engine extends EventTarget {
   }
 
   async setup() {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+    const opts = { latencyHint: 'interactive' };
+    if (this.contextRate) opts.sampleRate = this.contextRate;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)(opts);
     this.ctx = ctx;
     ctx.resume();
     await ctx.audioWorklet.addModule(new URL('./capture-worklet.js', import.meta.url));
@@ -153,8 +153,21 @@ export class Engine extends EventTarget {
         if (e.name === 'NotAllowedError' || e.name === 'SecurityError' || i === tries.length - 1) throw e;
       }
     }
+    let src;
+    try {
+      src = this.ctx.createMediaStreamSource(stream);
+    } catch (e) {
+      // Firefox can't connect a microphone running at a different sample rate from the
+      // audio engine (Chrome and Safari convert). Restart the engine at the mic's rate.
+      const rate = stream.getAudioTracks()[0]?.getSettings?.().sampleRate;
+      if (e.name !== 'NotSupportedError' || !rate || rate === this.ctx.sampleRate) {
+        stream.getTracks().forEach((t) => t.stop());
+        throw e;
+      }
+      await this.restartAt(rate);
+      src = this.ctx.createMediaStreamSource(stream);
+    }
     const ctx = this.ctx;
-    const src = ctx.createMediaStreamSource(stream);
     // Mic boost: humming is quiet, so allow up to +12 dB before anything is captured.
     const boost = ctx.createGain();
     boost.gain.value = this.settings.micBoost ?? 1;
@@ -180,6 +193,24 @@ export class Engine extends EventTarget {
     this.mic = { stream, track: stream.getAudioTracks()[0], src, boost, node, live, monitor };
     if (this.session) live.connect(this.session.merger, 0, 1);
     return this.mic;
+  }
+
+  // Rebuild the audio engine at another sample rate. Sounds are kept (audio buffers don't
+  // belong to an engine); anything playing stops.
+  async restartAt(rate) {
+    this.stopTransport();
+    clearInterval(this.timer);
+    for (const pad of this.pads) pad.source = null;
+    try {
+      await this.ctx.close();
+    } catch {
+      /* already closed */
+    }
+    this.micChunks = [];
+    this.micUntil = 0;
+    this.contextRate = rate;
+    this.initP = this.setup();
+    await this.initP;
   }
 
   async reopenMic() {
@@ -270,14 +301,12 @@ export class Engine extends EventTarget {
 
   stopTransport() {
     this.running = false;
-    this.song = null;
     for (const pad of this.pads) {
       this.stopSource(pad, this.now);
       pad.pending = null;
       if (pad.state === 'armed' || pad.state === 'recording') this.cancelRecording(pad);
     }
     this.emit('transport');
-    this.emit('song');
   }
 
   // Loops that are playing (or about to), other than `except`.
@@ -293,79 +322,7 @@ export class Engine extends EventTarget {
   tick() {
     if (!this.ctx) return;
     const now = this.now;
-    if (this.song) this.songTick(now);
     for (const pad of this.pads) this.updatePad(pad, now);
-  }
-
-  // ---------- song mode ----------
-  //
-  // A song is a list of sections, each a number of bars and which pads play in it. It
-  // plays hands-free: pads come in from the top and drop out exactly on section changes.
-
-  playSong(sections, { countIn = this.settings.countIn } = {}) {
-    if (!sections.length) return;
-    this.stopTransport();
-    for (const p of this.pads) p.enabled = false;
-    const start = this.now + 0.15 + (countIn ? this.bar : 0);
-    const times = [];
-    let t = start;
-    for (const sec of sections) {
-      times.push(t);
-      t += sec.bars * this.bar;
-    }
-    this.startTransport(start);
-    this.song = { sections, times, start, end: t, index: -1 };
-    this.emit('song');
-  }
-
-  songTick(now) {
-    const song = this.song;
-    const next = song.index + 1;
-    if (next < song.sections.length && now >= song.times[next] - SONG_AHEAD) {
-      const at = song.times[next];
-      const sec = song.sections[next];
-      for (const pad of this.pads) {
-        const want = !!sec.pads[pad.index] && pad.hasSound && pad.mode === 'loop';
-        if (want && !(pad.enabled && pad.source)) {
-          pad.enabled = true;
-          this.startLoopAt(pad, at);
-          pad.pending = { type: 'start', at };
-        } else if (!want && pad.enabled) {
-          pad.enabled = false;
-          this.stopSource(pad, at);
-          pad.pending = { type: 'stop', at };
-        }
-      }
-      song.index = next;
-      this.emit('song');
-    } else if (next === song.sections.length && now >= song.end - SONG_AHEAD && !song.ending) {
-      song.ending = true;
-      for (const pad of this.pads) {
-        pad.enabled = false;
-        this.stopSource(pad, song.end);
-      }
-    } else if (song.ending && now >= song.end + 0.05) {
-      this.song = null;
-      this.running = false;
-      this.emit('transport');
-      this.emit('song');
-      this.emit('songend');
-    }
-  }
-
-  // Where the song is, for the display: section index (-1 while counting in) and bars left.
-  songPosition(t = this.heardTime) {
-    const song = this.song;
-    if (!song) return null;
-    let i = -1;
-    while (i + 1 < song.times.length && t >= song.times[i + 1]) i++;
-    const nextT = i + 1 < song.times.length ? song.times[i + 1] : song.end;
-    return {
-      index: i,
-      total: song.sections.length,
-      barsLeft: Math.ceil((nextT - t) / this.bar - 1e-3),
-      beatsToStart: Math.ceil((song.start - t) / this.beat - 1e-3),
-    };
   }
 
   // ---------- count-in ----------

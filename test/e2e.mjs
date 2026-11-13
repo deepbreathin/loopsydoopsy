@@ -229,33 +229,7 @@ try {
   const names = await ev(async () => (await (await import('./js/storage.js')).listTakes()).map((t) => t.name));
   assert.ok(names.some((n) => !n.includes('voice')), 'a pads-only take');
 
-  // Song: the editor builds an arrangement; "Play & sing" plays it hands-free and saves a take.
   await page.click('#playBtn'); // stop
-  await page.click('#songBtn');
-  await sleep(200);
-  assert.ok((await ev(() => loopsy.getSong().sections.length)) >= 3, 'song is built up automatically');
-  await page.screenshot({ path: shots + '7-song.png' });
-  await ev(() =>
-    loopsy.setSong({
-      sections: [
-        { bars: 1, pads: [true, false, false, false, false, false, false, false] },
-        { bars: 2, pads: [true, true, false, false, false, false, false, false] },
-        { bars: 1, pads: [false, true, false, false, false, false, false, false] },
-      ],
-    }),
-  );
-  await page.click('#songSing'); // record & sing
-  await until(() => loopsy.engine.song && loopsy.engine.session);
-  await until(() => loopsy.engine.songPosition()?.index === 1, null, 6000);
-  await sleep(300);
-  const sec2 = await ev(() => loopsy.engine.pads.slice(0, 2).map((p) => !!p.source && p.enabled));
-  assert.deepEqual(sec2, [true, true], 'section 2 plays pads 1 and 2');
-  await page.screenshot({ path: shots + '8-song-playing.png' });
-  await until(() => loopsy.engine.songPosition()?.index === 2, null, 6000);
-  await sleep(300);
-  assert.equal(await ev(() => loopsy.engine.pads[0].enabled), false, 'pad 1 drops out in section 3');
-  await until(() => !loopsy.engine.song, null, 6000);
-  await until(() => document.getElementById('takesCount').textContent === '4', null, 4000);
 
   // New soundboard: save this one under a name, start fresh.
   await page.click('#newBoardBtn');
@@ -286,7 +260,6 @@ try {
   await sleep(200);
   await page.locator('#projectList li', { hasText: 'Humming ideas' }).locator('[data-a="open"]').click();
   await until(() => loopsy.engine.pads[0].raw && loopsy.projects.current.name === 'Humming ideas');
-  assert.ok(await ev(() => loopsy.getSong()?.sections.length === 3), 'song comes back with its soundboard');
   await page.screenshot({ path: shots + '9c-soundboards.png' });
   const wavs = [];
   page.on('download', (d) => wavs.push(d.suggestedFilename()));
@@ -316,11 +289,12 @@ try {
   assert.ok(await page.locator('#suggestText').isVisible());
   await page.click('#helpBoxSheet .close');
 
-  // Reload: same project, pads restored from storage, no welcome screen the second time.
+  // Reload: same project, pads restored from storage; getting started shows every visit.
   await page.reload();
   await page.click('body');
   await until(() => loopsy.engine.pads[1].hasSound, null, 4000);
-  assert.ok(await page.locator('#splash').evaluate((e) => e.hidden), 'welcome only shows once');
+  assert.ok(await page.locator('#splash').evaluate((e) => !e.hidden), 'getting started shows on every visit');
+  await page.click('#startBtn');
 
   const layoutKind = () => ev(() => document.getElementById('grid').dataset.layout);
   for (const [w, h, kind, name] of [

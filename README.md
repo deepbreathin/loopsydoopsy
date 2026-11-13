@@ -16,9 +16,13 @@ Every push to `main` publishes `www/` to **GitHub Pages**, at **https://deepbrea
 - **Android:** Chrome → ⋮ → **Install app**.
 - **Computer:** Chrome or Edge → the install icon in the address bar (Safari on a Mac: File → Add to Dock). Keys: **1–8** tap the pads, **Space** plays/stops, **R** records.
 
-The first time someone opens it in a browser, the welcome screen says **install it first** and shows the steps for their device (Menu → Getting started brings it back; Menu → Install the app has the steps too). After their first recording it reminds them once more. Installing matters: sounds are saved on the device, and browsers may clear a website's saved data if it isn't opened for a while (Safari after about a week), but they don't clear an installed app's. Once installed it also works offline.
+Every visit opens on **Getting started** (tips for recording and lining loops up). In a browser tab it also says **install it first** and shows the steps for their device (Menu → Getting started brings it back; Menu → Install the app has the steps too). After their first recording it reminds them once more. Installing matters: sounds are saved on the device, and browsers may clear a website's saved data if it isn't opened for a while (Safari after about a week), but they don't clear an installed app's. Once installed it also works offline.
 
 **One-time setup:** the repo must be public (free Pages needs that), and in Settings → Pages → Build and deployment, Source must be **GitHub Actions**. Settings → General → Default branch should be `main`.
+
+### Browsers
+
+Chrome, Edge and Safari (iPhone, iPad and Mac) are the main targets, and Firefox works too. Firefox can't connect a microphone running at a different sample rate from the app's audio engine, so when that happens the app quietly restarts its engine at the microphone's rate (nothing is lost). Firefox on a computer can't install web apps, but it works in a tab.
 
 ### FAQ & suggestions
 
@@ -58,11 +62,10 @@ The repo used to build an Android app (APK) as well; that was retired in favour 
 | **Next loop: 1 · 2 · 4 · 8 bars** | Sets the length of the next recording. |
 | **● Rec** (top bar) | Records **just the pads**, with no mic and so no echo. Bring loops in and out while it runs, then tap Rec again to save the take. |
 | **Sing on top** (the white tile) | Records the pads **plus your voice**. Tap again to stop and save. During a Rec take, tapping it adds your voice from that moment. It shows a live trace of your pitch, so you can see quiet humming is getting through. |
-| **🎼 Song** | Plan your song: a list of sections, each a length and the pads that play in it. **Build it up for me** makes a starting arrangement. **Play** plays it hands-free, **Record** records the pads as they play, and **Record & sing** adds your voice; the take saves itself when the song ends. |
 | **♫** | Your recorded takes: play them, share or save them as **MP3** (small, plays anywhere) or **WAV** (full quality), delete them (with undo). |
 | **＋ New soundboard** | Asks whether to keep the current soundboard. **Save it** lets you name it, then you get a fresh, empty board. **Don't save** lets it go (with Undo). |
-| **Soundboard name** (above the pads, tap it) | Your **Soundboards**: each keeps all eight pads' sounds, the tempo and the song, saved as you go. Open, rename or duplicate them; **Save sounds as WAV** shares every pad's sound as its own file; **Back up / send** makes one `.loopsy` file (all sounds and settings) to keep in Drive or send to another phone, and **Open a backup** brings it back. |
-| **☰ Menu** | Soundboards, Song, **Looping basics**, and settings. |
+| **Soundboard name** (above the pads, tap it) | Your **Soundboards**: each keeps all eight pads' sounds and the tempo, saved as you go. Open, rename or duplicate them; **Save sounds as WAV** shares every pad's sound as its own file; **Back up / send** makes one `.loopsy` file (all sounds and settings) to keep in Drive or send to another phone, and **Open a backup** brings it back. |
+| **☰ Menu** | Getting started, Soundboards, FAQ & suggestions, **Looping basics**, settings, install, and the version with **Check for updates**. |
 | **Tempo** (tap the bpm) | BPM, tap tempo, time signature, count-in, mic boost, latency calibration and the rest of the settings. |
 
 ### Pitch strip
@@ -130,10 +133,10 @@ The **circular waveform** comes from the app in the reference screenshot. A loop
 www/                  the app (everything below lives in here)
 .github/workflows/    publishes www/ to GitHub Pages from main
 
-index.html            layout + sheets (pad options, trim, settings, recordings, projects, song, looping basics)
+index.html            layout + sheets (pad options, trim, settings, recordings, soundboards, microphone, FAQ, looping basics)
 css/style.css         styles; portrait 2×4 grid, landscape 4×2
 js/main.js            UI wiring, gestures, render loop
-js/engine.js          Web Audio: transport, count-in, recording, playback, song playback, session recorder, calibration
+js/engine.js          Web Audio: transport, count-in, recording, playback, session recorder, calibration
 js/capture-worklet.js AudioWorklet that taps audio with frame-accurate timestamps
 js/pad-view.js        canvas drawing of the circular pads
 js/trim.js            trim editor
@@ -142,7 +145,7 @@ js/layout.js          picks the pad grid for the screen / fold — unit-tested
 js/pitch.js           voice pitch detection (YIN) and pitch contours — unit-tested
 js/projects.js        soundboards: save / open / new / duplicate / backup, autosave
 js/boardfile.js       the .loopsy backup file format — unit-tested
-js/song.js            song editor and the "build it up" arrangement — unit-tested
+js/mic.js             asking for the microphone, and help when it can't be opened — unit-tested
 js/help.js            FAQ & suggestions box and its built-in guide — unit-tested
 js/storage.js         IndexedDB: projects and recorded takes
 js/wav.js             WAV encoder, plus the tempo/length tag on sent pad sounds — unit-tested

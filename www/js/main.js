@@ -4,7 +4,6 @@ import { drawPad, drawSing } from './pad-view.js';
 import * as layout from './layout.js';
 import { pitchRange } from './pitch.js';
 import { Projects } from './projects.js';
-import { SongEditor } from './song.js';
 import { HelpBox } from './help.js';
 import { MicGate } from './mic.js';
 import { VERSION } from './version.js';
@@ -49,15 +48,6 @@ const projects = new Projects({
 });
 const save = () => projects.save();
 const trim = new TrimEditor(engine, { onClose: save });
-const songEditor = new SongEditor({
-  engine,
-  getSong: () => song,
-  setSong: (s) => {
-    song = s;
-    save();
-  },
-  onPlay: (mode) => playSong(mode),
-});
 const padEls = [];
 const helpBox = new HelpBox({ toast: (...a) => toast(...a) });
 
@@ -358,14 +348,11 @@ $('playBtn').onclick = async () => {
   else engine.startTransport();
 };
 
-// Stop everything; a song take stopped early is still saved.
 function stopAll() {
   engine.stopTransport();
-  if (songSession && engine.session) stopTake();
 }
 
 let sessionStarted = 0;
-let songSession = false; // the current take was started from the song, so it ends with the song
 
 function setLive(on) {
   settings.liveMic = on;
@@ -422,7 +409,6 @@ async function toggleSing() {
 const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
 async function stopTake() {
-  songSession = false;
   const voice = settings.liveMic;
   const result = await engine.stopSession();
   setLive(false);
@@ -445,19 +431,6 @@ async function stopTake() {
     .catch((e) => console.warn('mp3', e));
 }
 
-// mode: 'play' | 'record' (the pads) | 'sing' (the pads + your voice)
-async function playSong(mode) {
-  await engine.init();
-  if (!song?.sections?.length) return;
-  if (engine.session) await stopTake();
-  if (mode !== 'play' && !(await startTake({ voice: mode === 'sing' }))) return;
-  songSession = mode !== 'play';
-  engine.playSong(song.sections);
-}
-
-engine.addEventListener('songend', () => {
-  if (songSession && engine.session) stopTake();
-});
 
 // ---------- menu & sheets ----------
 
@@ -469,7 +442,7 @@ $('menuSheet').addEventListener('click', (e) => {
   const what = e.target.closest('button')?.dataset.open;
   if (!what) return;
   $('menuSheet').close();
-  ({ projects: () => projects.show(), song: () => songEditor.open(), help: openHelp, settings: openSettings, install: openInstall, helpbox: () => helpBox.open(), welcome: showSplash })[what]();
+  ({ projects: () => projects.show(), help: openHelp, settings: openSettings, install: openInstall, helpbox: () => helpBox.open(), welcome: showSplash })[what]();
 });
 $('tempoBtn').onclick = () => openSettings();
 $('boardName').onclick = () => projects.show();
@@ -478,13 +451,6 @@ $('newBoardBtn').onclick = async () => {
   projects.newSoundboard();
 };
 $('takesBtn').onclick = () => openTakes();
-$('songBtn').onclick = () => {
-  if (engine.song) stopAll();
-  else songEditor.open();
-};
-engine.addEventListener('song', () => {
-  if ($('songSheet').open) songEditor.render();
-});
 
 // ---------- install (PWA) ----------
 
@@ -882,11 +848,6 @@ function hintText(t) {
       : 'Counting in… start when the hand reaches the top. Tap the pad to cancel.';
   }
   if (pads.some((p) => p.state === 'recording')) return 'Recording — the ring turns white in the last bar. Tap to finish early.';
-  const sp = engine.songPosition(t);
-  if (sp) {
-    if (sp.index < 0) return `Song starts in ${sp.beatsToStart}…${engine.session ? ' get ready to sing' : ''}`;
-    return `Song · section ${sp.index + 1} of ${sp.total} · ${plural(sp.barsLeft, 'bar')} left${engine.session ? ' · recording' : ''}`;
-  }
   if (engine.session) {
     return settings.liveMic
       ? 'Singing on top — tap the tile again to stop and save'
@@ -1008,8 +969,6 @@ function frame() {
   document.body.classList.toggle('session', !!engine.session);
   const recText = engine.session ? fmtTime((Date.now() - sessionStarted) / 1000) : 'Rec';
   if ($('recLabel').textContent !== recText) $('recLabel').textContent = recText;
-  document.body.classList.toggle('song', !!engine.song);
-  $('songBtnLabel').textContent = engine.song ? '■ Stop' : 'Song';
 
   const h = hintText(t);
   if (h !== lastHint) $('hint').textContent = lastHint = h;
@@ -1031,22 +990,10 @@ syncToggles();
 sizeCanvases();
 requestAnimationFrame(frame);
 
-// Welcome on first launch; after that, straight in.
-let welcomed = false;
-try {
-  welcomed = !!localStorage.getItem('welcomed');
-} catch {
-  /* storage blocked */
-}
-if (welcomed) $('splash').hidden = true;
-else showSplash();
+// Getting started on every visit: the tips, and (in a browser tab) how to install.
+showSplash();
 const dismissSplash = () => {
   $('splash').hidden = true;
-  try {
-    localStorage.setItem('welcomed', '1');
-  } catch {
-    /* storage blocked */
-  }
   engine.init();
 };
 $('startBtn').onclick = dismissSplash;

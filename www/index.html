@@ -59,7 +59,6 @@
         <button data-bars="8">8</button>
         <span>bars</span>
       </div>
-      <button class="song-btn" id="songBtn" aria-label="Song">🎼 <span id="songBtnLabel">Song</span></button>
       <p class="hint" id="hint">Tap an empty pad to record · tap to play · ⚙ for options</p>
     </footer>
 
@@ -191,7 +190,6 @@
       <form method="dialog">
         <div class="menu">
           <button type="button" data-open="projects">🎛 Soundboards<small id="menuProject"></small></button>
-          <button type="button" data-open="song">🎼 Song<small>plan when each pad plays, then sing over it</small></button>
           <button type="button" data-open="welcome">🚀 Getting started<small>the first steps, and installing the app</small></button>
           <button type="button" data-open="help">💡 Looping basics<small>bars, layers and leaving space</small></button>
           <button type="button" data-open="settings">⚙︎ Tempo &amp; settings</button>
@@ -207,7 +205,7 @@
     <dialog class="sheet" id="projectsSheet">
       <form method="dialog">
         <h2>Soundboards</h2>
-        <p class="sub">A soundboard keeps all eight pads' sounds, your tempo and your song. It saves as you go.</p>
+        <p class="sub">A soundboard keeps all eight pads' sounds and your tempo. It saves as you go.</p>
         <label class="row">Name <input type="text" id="projectName" maxlength="40" autocomplete="off" /></label>
         <div class="actions">
           <button type="button" id="exportWavs">🔊 Save sounds as WAV</button>
@@ -242,25 +240,6 @@
           <button type="button" class="primary big-btn" id="newNameSave">Save &amp; start new</button>
           <button type="button" class="big-btn" id="newNameBack">Back</button>
         </section>
-      </form>
-    </dialog>
-
-    <!-- Song -->
-    <dialog class="sheet wide" id="songSheet">
-      <form method="dialog">
-        <h2>Song <small id="songInfo"></small></h2>
-        <p class="sub">Each row is a section of your song. Tap the dots to choose which pads play in it. Pads come in at the start of a section and drop out at the end, so you don't have to cue anything while you sing.</p>
-        <ol class="sections" id="sectionList"></ol>
-        <div class="actions">
-          <button type="button" id="addSection">+ Add section</button>
-          <button type="button" id="autoSong">✨ Build it up for me</button>
-        </div>
-        <div class="actions">
-          <button type="button" id="songPlay">▶ Play</button>
-          <button type="button" id="songRec">● Record</button>
-          <button type="button" id="songSing" class="primary">🎤 Record &amp; sing</button>
-        </div>
-        <button class="close" value="close">Done</button>
       </form>
     </dialog>
 
@@ -395,7 +374,7 @@
 
         <section>
           <h3>Make it a song</h3>
-          <p>Songs come from loops coming in and dropping out. Try: <i>one loop → build up → everything → drop to one or two → all back in → end on one</i>. <b>🎼 Song</b> lets you plan that, then play it hands-free while you sing on top.</p>
+          <p>Songs come from loops coming in and dropping out. Try: <i>one loop → build up → everything → drop to one or two → all back in → end on one</i>. Tap pads to bring them in and out while <b>● Rec</b> or <b>Sing on top</b> records it.</p>
         </section>
 
         <section>
@@ -407,7 +386,7 @@
       </form>
     </dialog>
 
-    <!-- Welcome (first launch; audio also needs a tap to unlock on phones) -->
+    <!-- Welcome / getting started (every visit; audio also needs a tap to unlock on phones) -->
     <div class="splash" id="splash">
       <div class="logo">
         <span style="--c: var(--p0)"></span><span style="--c: var(--p1)"></span><span style="--c: var(--p2)"></span><span style="--c: var(--p3)"></span>
@@ -422,10 +401,10 @@
       </div>
       <h2 class="steps-title">Getting started</h2>
       <ol>
-        <li><b>Headphones on</b>, so the loops don't leak into your mic. Wired ones are best: Bluetooth headphones add a little delay.</li>
+        <li><b>Headphones help</b>, so the loops don't leak into your mic (wired ones are best: Bluetooth adds a little delay). <b>No headphones?</b> Switch the other loops off while you record, then line the new one up afterwards (step 4).</li>
         <li><b>Tap a pad.</b> It starts together with any loops playing: a hand moves round at the same pace as your loops; start humming as it reaches the <b>red mark</b> at the top. Try a low “bom… bom” first.</li>
         <li><b>Line up with a loop:</b> watch the pad you want to match. Its playhead comes round to the top just as yours starts, so you can come in close.</li>
-        <li>A little off? Tap the pad's <b>⚙</b> → <b>Trim</b> and slide it into place. It keeps playing with your other loops, so you can hear when it sits right. You can silence a breath there too.</li>
+        <li>A little off? Tap the pad's <b>⚙</b> → <b>Trim &amp; silence</b>. Pick another pad under <b>Compare with</b> to see the shapes of both sounds, then slide the <b>whole loop</b> into sync, or use <b>Move a part</b> to shift just one note. It plays with your other loops while you do it, and you can silence a breath there too.</li>
         <li><b>Add layers</b> on other pads: a beat, then a tune. Tap pads to bring them in and out.</li>
         <li>Tap <b>Sing on top</b> or <b>● Rec</b> to record a take, then <b>♫</b> to save it as an MP3.</li>
       </ol>

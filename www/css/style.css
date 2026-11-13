@@ -650,7 +650,7 @@ select:disabled,
   }
 }
 
-/* ---------- dock: song button ---------- */
+/* ---------- dock ---------- */
 
 .dock {
   display: flex;
@@ -662,19 +662,6 @@ select:disabled,
 .dock .hint {
   flex-basis: 100%;
   margin: 0;
-}
-.song-btn {
-  height: 40px;
-  border-radius: 999px;
-  padding: 0 16px;
-  background: var(--panel);
-  color: var(--text);
-  font-weight: 700;
-  font-size: 14px;
-}
-.song .song-btn {
-  background: var(--p4);
-  color: #1b0b33;
 }
 
 /* ---------- menu ---------- */
@@ -721,89 +708,6 @@ input[type='text'] {
   border-radius: 999px;
   padding: 0 14px;
   font-weight: 700;
-}
-
-/* ---------- song ---------- */
-
-.sections {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 46dvh;
-  overflow: auto;
-}
-.sections li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--panel-2);
-  border-radius: 14px;
-  padding: 6px 8px;
-}
-.sections li.now {
-  outline: 2px solid var(--p4);
-}
-.sections li.empty {
-  justify-content: center;
-  color: var(--muted);
-  background: none;
-  padding: 16px;
-}
-.sec-n {
-  width: 20px;
-  text-align: center;
-  color: var(--muted);
-  font-weight: 700;
-  font-size: 13px;
-}
-.sections .bars {
-  min-width: 52px;
-  height: 40px;
-  border-radius: 10px;
-  background: var(--panel);
-  font-weight: 800;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  line-height: 1.05;
-}
-.sections .bars small {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--muted);
-}
-.dots {
-  flex: 1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.dot {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 3px solid var(--c);
-  background: transparent;
-  padding: 0;
-}
-.dot {
-  color: var(--c);
-  font-weight: 800;
-  font-size: 12px;
-}
-.dot.on {
-  background: var(--c);
-  color: rgb(20 14 30 / 0.7);
-}
-.sections .x {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  color: var(--muted);
 }
 
 /* ---------- looping basics ---------- */

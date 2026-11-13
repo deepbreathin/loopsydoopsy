@@ -985,17 +985,8 @@ document.addEventListener('visibilitychange', () => document.hidden && projects.
 
 // ---------- boot ----------
 
-buildPads();
-// Ask the browser to keep our storage (Safari otherwise tidies away sites that go unused).
-navigator.storage?.persist?.().catch(() => {});
-await projects.boot();
-refreshTakesCount();
-syncToggles();
-sizeCanvases();
-requestAnimationFrame(frame);
-
-// Getting started on every visit: the tips, and (in a browser tab) how to install.
-showSplash();
+// Getting started on every visit: the tips, and (in a browser tab) how to install. Its
+// buttons are wired first, so nothing below can leave them dead.
 const dismissSplash = () => {
   $('splash').hidden = true;
   engine.init();
@@ -1005,6 +996,22 @@ $('basicsBtn').onclick = () => {
   dismissSplash();
   openHelp();
 };
+showSplash();
+
+buildPads();
+// Ask the browser to keep our storage (Safari otherwise tidies away sites that go unused).
+navigator.storage?.persist?.().catch(() => {});
+try {
+  // Don't wait forever if the browser's storage is stuck.
+  await Promise.race([projects.boot(), new Promise((_, no) => setTimeout(() => no(new Error('storage is slow')), 8000))]);
+} catch (e) {
+  console.warn('boot', e);
+  toast('Couldn’t open your saved soundboards — you can still play; try reopening the app');
+}
+refreshTakesCount();
+syncToggles();
+sizeCanvases();
+requestAnimationFrame(frame);
 // Phones only let audio start from a gesture; unlock on the first touch anywhere.
 document.addEventListener('pointerdown', () => engine.init(), { once: true, capture: true });
 
@@ -1046,3 +1053,4 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 }
 
 window.loopsy = { engine, settings, projects, getSong: () => song, setSong: (s) => (song = s) }; // handy for debugging
+window.loopsyReady = true; // tells the safety net in index.html that the app started

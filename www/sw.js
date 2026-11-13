@@ -1,5 +1,5 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
-const CACHE = 'loopsy-v17';
+const CACHE = 'loopsy-v18';
 const SHELL = [
   './',
   'index.html',
@@ -54,7 +54,7 @@ self.addEventListener('fetch', (e) => {
       try {
         const res = await Promise.race([
           fetch(e.request.url, { cache: 'no-cache' }), // revalidate, don't trust the HTTP cache
-          new Promise((_, reject) => setTimeout(() => reject(new Error('slow')), 4000)),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('slow')), 10000)),
         ]);
         if (res.ok) cache.put(e.request, res.clone());
         return res;

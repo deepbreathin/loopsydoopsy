@@ -398,6 +398,47 @@
       </div>
     </div>
 
+    <!-- If something goes wrong while starting -->
+    <div class="boot-error" id="bootError" hidden>
+      <p><b>Loopsy didn't start properly.</b> This usually fixes it:</p>
+      <button type="button" class="primary" id="bootFix">Fix it (reload the newest version)</button>
+      <small id="bootErrorMsg"></small>
+    </div>
+
+    <!-- Safety net, in plain script so it works even if the app's code fails to load:
+         "Let's loop" always closes the welcome screen, and a start-up failure shows a fix. -->
+    <script>
+      (function () {
+        var $ = function (id) { return document.getElementById(id); };
+        function close() { $('splash').hidden = true; }
+        $('startBtn').addEventListener('click', close);
+        $('basicsBtn').addEventListener('click', close);
+        var shown = false;
+        function trouble(msg) {
+          if (window.loopsyReady || shown) return;
+          shown = true;
+          $('bootErrorMsg').textContent = msg || '';
+          $('bootError').hidden = false;
+        }
+        window.addEventListener('error', function (e) {
+          var t = e.target;
+          trouble(t && t.src ? 'Couldn’t load ' + t.src.split('/').pop() : e.message);
+        }, true);
+        window.addEventListener('unhandledrejection', function (e) {
+          trouble(String((e.reason && e.reason.message) || e.reason));
+        });
+        setTimeout(function () { trouble('It took too long to start.'); }, 15000);
+        $('bootFix').addEventListener('click', function () {
+          $('bootFix').textContent = 'Reloading…';
+          var regs = navigator.serviceWorker && navigator.serviceWorker.getRegistrations ? navigator.serviceWorker.getRegistrations() : Promise.resolve([]);
+          regs.then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); })
+            .then(function () { return window.caches ? caches.keys() : []; })
+            .then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); })
+            .catch(function () {})
+            .then(function () { location.reload(); });
+        });
+      })();
+    </script>
     <script type="module" src="js/main.js"></script>
   </body>
 </html>

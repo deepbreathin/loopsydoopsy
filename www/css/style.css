@@ -1140,3 +1140,35 @@ details.others ol {
   padding-left: 20px;
   line-height: 1.45;
 }
+
+/* ---------- start-up trouble ---------- */
+
+.boot-error {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  top: calc(var(--safe-t) + 12px);
+  z-index: 60;
+  background: var(--panel);
+  border: 2px solid #e8132b;
+  border-radius: 16px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.boot-error[hidden] {
+  display: none;
+}
+.boot-error p {
+  margin: 0;
+}
+.boot-error button {
+  min-height: 44px;
+  border-radius: 12px;
+  font-weight: 750;
+}
+.boot-error small {
+  color: var(--muted);
+  word-break: break-word;
+}

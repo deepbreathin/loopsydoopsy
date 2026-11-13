@@ -2,16 +2,11 @@
 // recording a short screen explains why it's needed; its "Allow" button brings up the
 // browser's own question (Chrome on Android also offers "Only this time"). When the mic
 // can't be opened, it says why and how to fix it on this device.
+import { MIC_UNBLOCK, NAMES, browser } from './device.js';
+
 const $ = (id) => document.getElementById(id);
 const ASKED = 'micOk';
 
-const kind = () => {
-  const ua = navigator.userAgent;
-  if (/iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
-  if (/Android/.test(ua)) return 'android';
-  return 'desktop';
-};
-const installed = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
 function remembered() {
   try {
@@ -36,37 +31,25 @@ async function permissionState() {
   }
 }
 
-const UNBLOCK = {
-  android: installed()
-    ? ['Hold the Loopsy icon on your home screen, then tap App info (ⓘ).', 'Tap Permissions → Microphone → Allow.', 'Come back and tap Try again.']
-    : ['Tap the icon just left of the web address (it may look like ⚙︎ or a padlock).', 'Tap Permissions → Microphone, and allow it.', 'Come back and tap Try again.'],
-  ios: installed()
-    ? ['Open the Settings app → Apps → Safari → Microphone, and choose Ask or Allow.', 'Close Loopsy fully (swipe it away) and open it again.']
-    : ['Tap aA in the address bar → Website Settings.', 'Set Microphone to Ask or Allow.', 'Come back and tap Try again.'],
-  desktop: ['Click the icon just left of the web address.', 'Set Microphone to Allow.', 'Come back and tap Try again (or reload the page).'],
-};
 
 // What went wrong, in plain words, and what to do about it.
-export function explain(e) {
+export function explain(e, b = browser()) {
   const name = e?.name || '';
-  if (name === 'Unsupported') {
+  if (name === 'Unsupported' || b === 'inapp') {
     return {
       title: 'This browser can’t use the microphone',
-      text: 'If you opened the link from another app (WhatsApp, Instagram, Facebook, Gmail…), it opened inside that app, which can’t record. Open it in your phone’s browser instead:',
-      steps:
-        kind() === 'ios'
-          ? ['Tap the share or ⋯ button in that app.', 'Choose Open in Safari (or Open in browser).']
-          : ['Tap ⋮ in that app.', 'Choose Open in Chrome (or Open in browser).'],
+      text: 'If you opened the link from another app (WhatsApp, Instagram, Facebook, Gmail…), it opened inside that app, which can’t record. Open it in your phone’s own browser instead:',
+      steps: MIC_UNBLOCK.inapp.slice(1),
     };
   }
   if (name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError') {
-    return { title: 'The microphone is blocked', text: 'Loopsy was told not to use the microphone. To allow it:', steps: UNBLOCK[kind()] };
+    return { title: 'The microphone is blocked', text: `Loopsy isn’t allowed to use the microphone in ${NAMES[b]}. To allow it:`, steps: MIC_UNBLOCK[b] };
   }
   if (name === 'NotReadableError' || name === 'AbortError' || name === 'TrackStartError') {
     return {
       title: 'The microphone is busy',
       text: 'Something else may be using it: a phone or video call, a voice recorder, or another browser tab. Close that, then try again.',
-      steps: kind() === 'android' ? ['If it still won’t work, close Chrome fully (swipe it away) and open Loopsy again.'] : [],
+      steps: ['If it still won’t work, close the browser fully (swipe it away) and open Loopsy again.'],
     };
   }
   if (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'DevicesNotFoundError') {
@@ -81,6 +64,23 @@ export function explain(e) {
     text: 'Try again. If it keeps happening, close the browser fully and reopen Loopsy, or try Chrome (Android) or Safari (iPhone).',
     steps: [],
   };
+}
+
+// "Using a different browser?": each browser's steps, under its name.
+export function fillOthers(el, table) {
+  el.innerHTML = '';
+  for (const [key, steps] of Object.entries(table)) {
+    if (key === 'inapp' || key === 'ios-other') continue;
+    const h = document.createElement('h4');
+    h.textContent = NAMES[key].replace(/^./, (c) => c.toUpperCase());
+    const ol = document.createElement('ol');
+    for (const st of steps) {
+      const li = document.createElement('li');
+      li.textContent = st;
+      ol.append(li);
+    }
+    el.append(h, ol);
+  }
 }
 
 export class MicGate {
@@ -147,6 +147,10 @@ export class MicGate {
     ol.hidden = !h.steps.length;
     $('micHelpCode').textContent = e?.name && e.name !== 'Unsupported' ? `(${e.name}${e.message ? `: ${e.message}` : ''})` : '';
     $('micRetry').hidden = e?.name === 'Unsupported';
+    // Guessed the browser wrong? Every browser's steps, one tap away.
+    const others = $('micOthers');
+    others.hidden = !/blocked/.test(h.title);
+    if (!others.hidden) fillOthers($('micOthersList'), MIC_UNBLOCK);
     this.step('help');
     if (!this.dlg.open) this.dlg.showModal();
   }

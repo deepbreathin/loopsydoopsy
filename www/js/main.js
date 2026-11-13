@@ -5,7 +5,8 @@ import * as layout from './layout.js';
 import { pitchRange } from './pitch.js';
 import { Projects } from './projects.js';
 import { HelpBox } from './help.js';
-import { MicGate } from './mic.js';
+import { MicGate, fillOthers } from './mic.js';
+import { INSTALL, NAMES, browser } from './device.js';
 import { VERSION } from './version.js';
 import { TrimEditor } from './trim.js';
 import * as store from './storage.js';
@@ -465,22 +466,22 @@ window.addEventListener('beforeinstallprompt', (e) => {
 const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 $('menuInstall').hidden = standalone;
 
-function deviceKind() {
-  const ua = navigator.userAgent;
-  if (/iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
-  if (/Android/.test(ua)) return 'android';
-  return 'desktop';
-}
 
-const INSTALL_HOW = {
-  ios: 'In Safari, tap Share (the square with an arrow), then “Add to Home Screen”. Opened this from a message? Open it in Safari first.',
-  android: 'In Chrome, tap ⋮, then “Install app”.',
-  desktop: 'Click the install icon at the right of the address bar (Chrome or Edge). Safari on a Mac: File → Add to Dock.',
-};
+// Fill an <ol> with steps.
+function steps(ol, list) {
+  ol.innerHTML = '';
+  for (const st of list) {
+    const li = document.createElement('li');
+    li.textContent = st;
+    ol.append(li);
+  }
+}
 
 function showSplash() {
   $('splashInstall').hidden = standalone;
-  $('splashInstallHow').textContent = INSTALL_HOW[deviceKind()];
+  const b = browser();
+  $('splashInstallFor').textContent = b === 'inapp' ? 'Open it in your phone’s browser first:' : `In ${NAMES[b]}:`;
+  steps($('splashInstallHow'), INSTALL[b]);
   $('splashInstallNow').hidden = !installPrompt;
   $('splash').hidden = false;
 }
@@ -505,8 +506,11 @@ engine.addEventListener('recorded', () => {
 });
 
 function openInstall() {
-  const kind = deviceKind();
-  for (const sec of $('installSheet').querySelectorAll('[data-os]')) sec.hidden = sec.dataset.os !== kind;
+  const b = browser();
+  $('installFor').textContent = b === 'inapp' ? 'First, open it in your phone’s browser' : `You’re using ${NAMES[b]}`;
+  steps($('installSteps'), INSTALL[b]);
+  $('installIosNote').hidden = !b.startsWith('ios');
+  fillOthers($('installOthers'), INSTALL);
   $('installNowRow').hidden = !installPrompt;
   $('installSheet').showModal();
 }

@@ -257,6 +257,7 @@
           <h2 id="micHelpTitle"></h2>
           <p class="sub" id="micHelpText"></p>
           <ol class="mic-steps" id="micHelpSteps"></ol>
+          <details class="others" id="micOthers" hidden><summary>Using a different browser?</summary><div id="micOthersList"></div></details>
           <p class="sub mic-code" id="micHelpCode"></p>
           <button type="button" class="primary big-btn" id="micRetry">Try again</button>
           <button type="button" class="big-btn" id="micClose">Close</button>
@@ -303,29 +304,11 @@
         <div class="actions" id="installNowRow" hidden>
           <button type="button" class="primary" id="installNow">📲 Install now</button>
         </div>
-        <section data-os="ios">
-          <h3>iPhone &amp; iPad (Safari)</h3>
-          <ol>
-            <li>Tap the <b>Share</b> button <span aria-hidden="true">(the square with an arrow)</span>.</li>
-            <li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li>
-            <li>Open it from the home screen and allow the microphone when asked.</li>
-          </ol>
-          <p class="sub">Can't hear anything? Check the ring/silent switch on the side of the phone. Installing to the home screen also stops Safari from tidying your sounds away if you don't open it for a while.</p>
-        </section>
-        <section data-os="android">
-          <h3>Android (Chrome)</h3>
-          <ol>
-            <li>Tap the <b>⋮</b> menu, then <b>Install app</b> or <b>Add to Home screen</b>.</li>
-          </ol>
-        </section>
-        <section data-os="desktop">
-          <h3>Computer (Chrome, Edge)</h3>
-          <ol>
-            <li>Click the install icon at the right of the address bar, or open the browser menu and choose <b>Install Loopsy Doopsy</b>.</li>
-            <li>On a Mac with Safari: <b>File → Add to Dock</b>.</li>
-          </ol>
-          <p class="sub">Keys: <b>1–8</b> tap the pads, <b>Space</b> starts and stops, <b>R</b> records what you play.</p>
-        </section>
+        <h3 id="installFor"></h3>
+        <ol id="installSteps"></ol>
+        <p class="sub" id="installIosNote" hidden>Can't hear anything? Check the ring/silent switch on the side of the phone.</p>
+        <details class="others"><summary>Using a different browser?</summary><div id="installOthers"></div></details>
+        <p class="sub">On a computer: <b>1–8</b> tap the pads, <b>Space</b> starts and stops, <b>R</b> records what you play.</p>
         <button class="close primary" value="close">Done</button>
       </form>
     </dialog>
@@ -396,7 +379,8 @@
       <div class="install-card" id="splashInstall" hidden>
         <b>📲 First, install it</b>
         <p>Your sounds are saved on this device. Installing keeps them safe (browsers can tidy away sites you don't open for a while), and it works offline.</p>
-        <p class="how" id="splashInstallHow"></p>
+        <p class="how-for" id="splashInstallFor"></p>
+        <ol class="how" id="splashInstallHow"></ol>
         <button type="button" class="primary" id="splashInstallNow" hidden>Install now</button>
       </div>
       <h2 class="steps-title">Getting started</h2>

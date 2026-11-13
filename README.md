@@ -72,16 +72,12 @@ The repo used to build an Android app (APK) as well; that was retired in favour 
 | **▶ / ■** | Starts or stops everything. Loops you've switched on start together from the top. |
 | **Next loop: 1 · 2 · 4 · 8 bars** | Sets the length of the next recording. |
 | **● Rec** (top bar) | Records **just the pads**, with no mic and so no echo. Bring loops in and out while it runs, then tap Rec again to save the take. |
-| **Sing on top** (the white tile) | Records the pads **plus your voice**. Tap again to stop and save. During a Rec take, tapping it adds your voice from that moment. It shows a live trace of your pitch, so you can see quiet humming is getting through. |
+| **Sing on top** (the white tile) | Records the pads **plus your voice**. Tap again to stop and save. During a Rec take, tapping it adds your voice from that moment. It shows a live level meter, so you can see quiet humming is getting through. |
 | **♫** | Your recorded takes: play them, share or save them as **MP3** (small, plays anywhere) or **WAV** (full quality), delete them (with undo). |
 | **＋ New soundboard** | Asks whether to keep the current soundboard. **Save it** lets you name it, then you get a fresh, empty board. **Don't save** lets it go (with Undo). |
 | **Soundboard name** (above the pads, tap it) | Your **Soundboards**: each keeps all eight pads' sounds and the tempo, saved as you go. Open, rename or duplicate them; **Save sounds as WAV** shares every pad's sound as its own file; **Back up / send** makes one `.loopsy` file (all sounds and settings) to keep in Drive or send to another phone, and **Open a backup** brings it back. |
 | **☰ Menu** | Getting started, Soundboards, FAQ & suggestions, **Looping basics**, settings, install, and the version with **Check for updates**. |
 | **Tempo** (tap the bpm) | BPM, tap tempo, time signature, count-in, mic boost, latency calibration and the rest of the settings. |
-
-### Pitch strip
-
-The slim strip on the right of each pad shows **pitch**: a dot that jumps up for high notes and down for low ones as the loop plays, leaving a short trail. On bigger screens it names the note too (A3, C4…). It works out each loop's melody when you record it, and follows the mic live while you record, so you can see where each layer sits and spread them out (low, middle, high).
 
 ### Trim & silence (⚙ → Trim & silence)
 
@@ -99,6 +95,10 @@ The pad **keeps playing in time with your other loops** while you trim, with a p
 ### Updates
 
 The app checks for a new version whenever it's opened or brought back to the front, and switches to it straight away if nothing's playing (otherwise it offers an **Update** button). It always loads the newest files when online, and the saved copy when offline.
+
+### Crackles
+
+Tempo & settings → **Sound** picks **Smooth** (bigger audio buffers: no crackles, a little more delay, which is measured and corrected for) or **Fast** (lowest delay, for devices that keep up). Android phones and Firefox start on Smooth. Phones also redraw at 30 frames a second and at most 2× sharpness, and sounds fade in and out over a few milliseconds when they start mid-way or stop, so nothing clicks.
 
 ### Microphones, headphones and delay
 
@@ -153,7 +153,6 @@ js/pad-view.js        canvas drawing of the circular pads
 js/trim.js            trim editor
 js/timing.js          pure maths (grid, loop cutting, peaks, onset detection, tap tempo) — unit-tested
 js/layout.js          picks the pad grid for the screen / fold — unit-tested
-js/pitch.js           voice pitch detection (YIN) and pitch contours — unit-tested
 js/projects.js        soundboards: save / open / new / duplicate / backup, autosave
 js/boardfile.js       the .loopsy backup file format — unit-tested
 js/mic.js             asking for the microphone, and help when it can't be opened — unit-tested

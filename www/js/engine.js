@@ -1,5 +1,4 @@
 import { applyEdits, barDur, beatDur, findOnset, median, mod, nextBoundary, peaks, phaseAt, renderLoop, rotate } from './timing.js';
-import { blockPitch, pitchRange, pitchTrack } from './pitch.js';
 
 export const PAD_COUNT = 8;
 
@@ -23,6 +22,7 @@ export const PEAK_BINS = 180;
 export const LOOP_LENGTHS = [1, 2, 4, 8]; // bars; powers of two so every loop lines up
 const KEEP_SECONDS = 45; // how much mic history to keep for pre-roll / tails
 const EDGE_FADE = 0.004; // seconds faded at loop seams
+const PLAY_FADE = 0.006; // seconds faded when a sound starts mid-way or is stopped (no clicks)
 
 // A single pad. Plain data plus the live Web Audio nodes it owns.
 class Pad {
@@ -46,8 +46,6 @@ class Pad {
     this.defaultStart = 0; // trimStart as captured, for "Reset" in the trim editor
     this.buffer = null;
     this.peaks = null;
-    this.pitchTrack = null; // MIDI note per ~40 ms of the loop (NaN = no clear pitch)
-    this.pitchRange = null;
     this.livePeaks = null;
     this.rec = null;
     this.enabled = false; // loop is switched on (plays whenever the transport runs)
@@ -73,7 +71,6 @@ export class Engine extends EventTarget {
     this.micUntil = 0; // last captured frame (exclusive)
     this.inputLevel = 0;
     this.levels = new Float32Array(160); // recent mic loudness, newest last (one per ~43 ms)
-    this.pitches = new Float32Array(160).fill(NaN); // recent mic pitch, same clock as levels
     this.session = null;
   }
 
@@ -115,7 +112,9 @@ export class Engine extends EventTarget {
   }
 
   async setup() {
-    const opts = { latencyHint: 'interactive' };
+    // "smooth" uses bigger audio buffers: a little more delay (measured and corrected for),
+    // but no crackles on phones that can't keep up with the smallest ones.
+    const opts = { latencyHint: this.latencyMode === 'fast' ? 'interactive' : 'balanced' };
     if (this.contextRate) opts.sampleRate = this.contextRate;
     if (IOS) audioSession('playback');
     const ctx = new (window.AudioContext || window.webkitAudioContext)(opts);
@@ -248,7 +247,14 @@ export class Engine extends EventTarget {
 
   // Rebuild the audio engine at another sample rate. Sounds are kept (audio buffers don't
   // belong to an engine); anything playing stops.
+  // Fast (lowest delay) or smooth (fewer crackles); restarts the audio engine if it's running.
+  async setLatencyMode(mode) {
+    this.latencyMode = mode;
+    if (this.ctx) await this.restartAt(this.ctx.sampleRate);
+  }
+
   async restartAt(rate) {
+    this.releaseMic();
     this.stopTransport();
     clearInterval(this.timer);
     for (const pad of this.pads) pad.source = null;
@@ -318,8 +324,6 @@ export class Engine extends EventTarget {
     this.inputLevel = Math.max(rms, this.inputLevel * 0.8);
     this.levels.copyWithin(0, 1);
     this.levels[this.levels.length - 1] = rms;
-    this.pitches.copyWithin(0, 1);
-    this.pitches[this.pitches.length - 1] = blockPitch(samples, this.ctx.sampleRate);
     // Feed the live waveform of any pad that is recording.
     const sr = this.ctx.sampleRate;
     const lat = this.latency;
@@ -583,12 +587,6 @@ export class Engine extends EventTarget {
     // Real loudness (not stretched to fill the pad), the same scale as the live view while
     // recording; the pad's volume is applied when it's drawn.
     pad.peaks = peaks(data, PEAK_BINS);
-    // Pitch contour for the pitch strip; a little heavier, so off the critical path.
-    clearTimeout(pad.pitchTimer);
-    pad.pitchTimer = setTimeout(() => {
-      pad.pitchTrack = pitchTrack(data, sr);
-      pad.pitchRange = pitchRange(pad.pitchTrack);
-    }, 30);
     if (pad.state === 'empty') pad.state = 'ready';
   }
 
@@ -670,7 +668,12 @@ export class Engine extends EventTarget {
     const src = this.ctx.createBufferSource();
     src.buffer = pad.buffer;
     src.loop = true;
-    src.connect(pad.gain);
+    src.env = this.ctx.createGain(); // per-sound fade, so starts and stops don't click
+    if (offset > 0.001) {
+      src.env.gain.setValueAtTime(0, when);
+      src.env.gain.linearRampToValueAtTime(1, when + PLAY_FADE);
+    }
+    src.connect(src.env).connect(pad.gain);
     src.start(when, offset);
     pad.source = src;
     pad.playFrom = when - offset;
@@ -682,7 +685,8 @@ export class Engine extends EventTarget {
     if (pad.source) this.stopSource(pad, now);
     const src = this.ctx.createBufferSource();
     src.buffer = pad.buffer;
-    src.connect(pad.gain);
+    src.env = this.ctx.createGain();
+    src.connect(src.env).connect(pad.gain);
     src.start(now);
     pad.source = src;
     pad.playFrom = now;
@@ -693,8 +697,11 @@ export class Engine extends EventTarget {
   stopSource(pad, when) {
     const src = pad.source;
     if (!src) return;
+    const t = Math.max(when, this.now);
     try {
-      src.stop(Math.max(when, this.now));
+      // Fade out over a few milliseconds instead of cutting dead (which clicks).
+      src.env?.gain.setTargetAtTime(0, t, PLAY_FADE / 3);
+      src.stop(t + PLAY_FADE);
     } catch {
       /* already stopped */
     }

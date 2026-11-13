@@ -20,7 +20,6 @@ const SHELL = [
   'js/capture-worklet.js',
   'js/boardfile.js',
   'js/layout.js',
-  'js/pitch.js',
   'js/projects.js',
   'js/audio-files.js',
   'js/help.js',

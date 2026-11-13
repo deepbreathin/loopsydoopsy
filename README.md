@@ -2,6 +2,10 @@
 
 A colourful loop recorder for your phone. There are eight pads. Tap one and it counts you in, records for exactly the number of bars you chose, then starts looping in time with everything else. Each pad shows its sound as a **circular waveform**, with a playhead sweeping round it, so you can always see where the loop starts and how long it is.
 
+[![Loopsy Doopsy in action: loops recorded on the pads, playheads sweeping round in time](docs/demo-preview.gif)](docs/demo.mp4)
+
+▶ **[Watch the demo](docs/demo.mp4)** (38 seconds, with sound)
+
 <img src="docs/screenshot.png" height="420" alt="Loopsy Doopsy on a phone: eight coloured pads, two with circular waveforms"> <img src="docs/unfolded.png" height="420" alt="Unfolded on a OnePlus Open: a 3×3 grid with the Sing tile as the ninth square">
 
 It's built for singing and humming: record a few vocal loops, then tap **Sing on top** to record yourself over the lot.

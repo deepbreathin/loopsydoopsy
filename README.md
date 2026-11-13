@@ -15,11 +15,7 @@ It's an **installable web app (PWA)** for iPhone, iPad, Android and computers. I
 Every push to `main` publishes `www/` to **GitHub Pages**, at **https://loopsydoopsy.xyz** (custom domain; Settings → Pages must have **Enforce HTTPS** ticked, because browsers only allow the microphone on https). Open that link, then:
 
 - **iPhone / iPad:** Safari → Share → **Add to Home Screen**.
-- **Android:** Chrome → ⋮ → *
-
-
-
-*Install app**.
+- **Android:** Chrome → ⋮ → **Install app**.
 - **Computer:** Chrome or Edge → the install icon in the address bar (Safari on a Mac: File → Add to Dock). Keys: **1–8** tap the pads, **Space** plays/stops, **R** records.
 
 Every visit opens on **Getting started** (tips for recording and lining loops up). In a browser tab it also says **install it first** and shows the steps for their device (Menu → Getting started brings it back; Menu → Install the app has the steps too). After their first recording it reminds them once more. Installing matters: sounds are saved on the device, and browsers may clear a website's saved data if it isn't opened for a while (Safari after about a week), but they don't clear an installed app's. Once installed it also works offline.

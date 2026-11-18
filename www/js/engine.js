@@ -3,10 +3,11 @@ import { applyEdits, barDur, beatDur, findOnset, median, mod, nextBoundary, peak
 export const PAD_COUNT = 8;
 
 // iPhone / iPad (iPadOS reports itself as a Mac with a touch screen).
-const IOS =
-  typeof navigator !== 'undefined' &&
-  (/iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
-const MIC_IDLE_SECONDS = 4; // iOS: let the microphone go this long after it was last needed
+const UA = globalThis.navigator?.userAgent ?? '';
+const IOS = /iPad|iPhone|iPod/.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1);
+const MOBILE = IOS || /Android/.test(UA);
+const SMOOTH_LATENCY_HINT = MOBILE ? 'playback' : 'balanced';
+const MIC_IDLE_SECONDS = 4;
 
 // Safari's audio session (iOS 16.4+): 'playback' plays loops at full volume through the
 // speaker, even with the silent switch on; 'play-and-record' is needed while the mic is
@@ -63,6 +64,7 @@ export class Engine extends EventTarget {
     super();
     this.settings = settings;
     this.ctx = null;
+    this.latencyMode = MOBILE || /Firefox/.test(UA) ? 'smooth' : 'fast';
     this.running = false;
     this.origin = 0;
     this.pads = Array.from({ length: PAD_COUNT }, (_, i) => new Pad(i));
@@ -112,9 +114,8 @@ export class Engine extends EventTarget {
   }
 
   async setup() {
-    // "smooth" uses bigger audio buffers: a little more delay (measured and corrected for),
-    // but no crackles on phones that can't keep up with the smallest ones.
-    const opts = { latencyHint: this.latencyMode === 'fast' ? 'interactive' : 'balanced' };
+    // Ask for more output buffering on phones in Smooth mode to reduce underruns.
+    const opts = { latencyHint: this.latencyMode === 'fast' ? 'interactive' : SMOOTH_LATENCY_HINT };
     if (this.contextRate) opts.sampleRate = this.contextRate;
     if (IOS) audioSession('playback');
     const ctx = new (window.AudioContext || window.webkitAudioContext)(opts);
@@ -160,21 +161,24 @@ export class Engine extends EventTarget {
 
   async openMic() {
     const initP = this.init();
+    // The permission prompt can outlast audio setup. Handle setup errors while it is open.
+    initP.catch(() => {});
     if (IOS) {
       // Safari: have the audio engine (and its recorder) running before the mic opens;
       // the other way round can leave the audio distorted. Then switch to recording mode.
       await initP;
       audioSession('play-and-record');
     }
-    const streamP = this.openStream();
     let stream;
     try {
-      stream = await streamP;
-    } finally {
-      await initP.catch(() => {});
+      stream = await this.openStream();
+      await initP;
+      return await this.connectMic(stream);
+    } catch (e) {
+      stream?.getTracks().forEach((t) => t.stop());
+      if (IOS) audioSession('playback');
+      throw e;
     }
-    await initP;
-    return this.connectMic(stream);
   }
 
   async openStream() {
@@ -210,11 +214,9 @@ export class Engine extends EventTarget {
       // Firefox can't connect a microphone running at a different sample rate from the
       // audio engine (Chrome and Safari convert). Restart the engine at the mic's rate.
       const rate = stream.getAudioTracks()[0]?.getSettings?.().sampleRate;
-      if (e.name !== 'NotSupportedError' || !rate || rate === this.ctx.sampleRate) {
-        stream.getTracks().forEach((t) => t.stop());
-        throw e;
-      }
+      if (e.name !== 'NotSupportedError' || !rate || rate === this.ctx.sampleRate) throw e;
       await this.restartAt(rate);
+      if (IOS) audioSession('play-and-record');
       src = this.ctx.createMediaStreamSource(stream);
     }
     const ctx = this.ctx;
@@ -241,6 +243,7 @@ export class Engine extends EventTarget {
     live.connect(monitor);
     monitor.connect(ctx.destination);
     this.mic = { stream, track: stream.getAudioTracks()[0], src, boost, node, live, monitor };
+    this.micIdleSince = 0;
     if (this.session) live.connect(this.session.merger, 0, 1);
     return this.mic;
   }
@@ -275,6 +278,8 @@ export class Engine extends EventTarget {
     const m = this.mic;
     if (!m) return;
     this.mic = null;
+    m.node.port.onmessage = null;
+    m.node.port.close();
     m.stream.getTracks().forEach((t) => t.stop());
     m.src.disconnect();
     m.boost.disconnect();
@@ -282,7 +287,9 @@ export class Engine extends EventTarget {
     m.live.disconnect();
     m.monitor.disconnect();
     this.micChunks = [];
+    this.micUntil = 0;
     this.inputLevel = 0;
+    this.levels.fill(0);
     if (IOS) audioSession('playback');
   }
 
@@ -332,9 +339,10 @@ export class Engine extends EventTarget {
       const s = Math.round((pad.rec.start + lat) * sr);
       const len = Math.round((pad.rec.plannedEnd - pad.rec.start) * sr);
       const bins = pad.livePeaks.length;
-      for (let i = 0; i < samples.length; i++) {
+      const first = Math.max(0, s - frame);
+      const end = Math.min(samples.length, s + len - frame);
+      for (let i = first; i < end; i++) {
         const k = frame + i - s;
-        if (k < 0 || k >= len) continue;
         const b = Math.floor((k / len) * bins);
         const v = Math.abs(samples[i]);
         if (v > pad.livePeaks[b]) pad.livePeaks[b] = v;
@@ -396,9 +404,8 @@ export class Engine extends EventTarget {
     if (!this.ctx) return;
     const now = this.now;
     for (const pad of this.pads) this.updatePad(pad, now);
-    // iOS: an open microphone keeps the phone in "call" mode (quieter, sometimes the
-    // earpiece), so let it go once nothing needs it; the next recording reopens it.
-    if (IOS && this.mic) {
+    // Let phones return to playback-only audio once recording and pre-roll are idle.
+    if (MOBILE && this.mic) {
       if (this.micBusy()) this.micIdleSince = 0;
       else if (!this.micIdleSince) this.micIdleSince = now;
       else if (now - this.micIdleSince > MIC_IDLE_SECONDS) {

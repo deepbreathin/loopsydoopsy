@@ -96,7 +96,7 @@ The app checks for a new version whenever it's opened or brought back to the fro
 
 ### Crackles
 
-Tempo & settings → **Sound** picks **Smooth** (bigger audio buffers: no crackles, a little more delay, which is measured and corrected for) or **Fast** (lowest delay, for devices that keep up). Android phones and Firefox start on Smooth. Phones also redraw at 30 frames a second and at most 2× sharpness, and sounds fade in and out over a few milliseconds when they start mid-way or stop, so nothing clicks.
+Tempo & settings → **Sound** picks **Smooth** (asks the browser for more buffering to reduce crackles) or **Fast** (lowest delay). Android, iPhone, iPad and Firefox start on Smooth. If you switch modes and have previously calibrated latency, run Calibrate again. Phones limit pad redraws to about 30 frames a second and release the microphone a few seconds after recording finishes.
 
 ### Microphones, headphones and delay
 

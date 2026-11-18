@@ -1,2 +1,2 @@
-// Stamped with the date and commit when the site is published (see .github/workflows/pages.yml).
+// Stamped with the package version, date and commit when GitHub Pages publishes the app.
 export const VERSION = '__BUILD__';

@@ -580,14 +580,13 @@ const checks = {
   setMonitor: 'monitor',
 };
 
-// Sound: "smooth" (bigger audio buffers, no crackles) or "fast" (lowest delay). Kept on
-// this device. Phones (Android) and Firefox crackle with the smallest buffers, so they
-// start on smooth.
+// Keep the sound mode on this device if the user chose one explicitly.
 const LAT_KEY = 'latencyMode';
 try {
-  engine.latencyMode = localStorage.getItem(LAT_KEY) || (/Android|Firefox/.test(navigator.userAgent) ? 'smooth' : 'fast');
+  const mode = localStorage.getItem(LAT_KEY);
+  if (mode === 'smooth' || mode === 'fast') engine.latencyMode = mode;
 } catch {
-  engine.latencyMode = 'smooth';
+  /* storage blocked */
 }
 for (const r of document.querySelectorAll('input[name="latMode"]')) {
   r.onchange = async () => {
@@ -892,9 +891,14 @@ let lastHint = '';
 // Phones redraw at 30 frames a second: smooth enough for sweeping playheads, and it leaves
 // the processor free for the audio (heavy drawing can make the sound crackle).
 const coarse = matchMedia('(pointer: coarse)').matches;
-let skip = false;
-function frame() {
-  if (coarse && (skip = !skip)) return requestAnimationFrame(frame);
+const phoneFrameInterval = 1000 / 30;
+let nextPhoneFrame = 0;
+function frame(timestamp) {
+  if (coarse) {
+    if (timestamp < nextPhoneFrame - 1) return requestAnimationFrame(frame);
+    if (timestamp - nextPhoneFrame >= phoneFrameInterval) nextPhoneFrame = timestamp;
+    nextPhoneFrame += phoneFrameInterval;
+  }
   const t = engine.heardTime;
   const bpb = settings.beatsPerBar;
   const beat = engine.beat;

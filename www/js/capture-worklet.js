@@ -18,22 +18,29 @@ class CaptureProcessor extends AudioWorkletProcessor {
     };
   }
 
-  process(inputs) {
+  process(inputs, outputs) {
     if (!this.active) return true;
     const input = inputs[0];
-    const n = input[0]?.length ?? 128;
-    if (this.fill === 0) this.startFrame = currentFrame;
-    for (let c = 0; c < this.channels; c++) {
-      const src = input[c] ?? input[0];
-      const dst = this.bufs[c];
-      if (src) dst.set(src, this.fill);
-      else dst.fill(0, this.fill, this.fill + n);
-    }
-    this.fill += n;
-    if (this.fill >= this.batch) {
-      const out = this.bufs.map((b) => b.slice(0, this.fill));
-      this.port.postMessage({ frame: this.startFrame, data: out }, out.map((b) => b.buffer));
-      this.fill = 0;
+    const frames = outputs[0][0].length;
+    let offset = 0;
+    while (offset < frames) {
+      if (this.fill === 0) this.startFrame = currentFrame + offset;
+      const count = Math.min(frames - offset, this.batch - this.fill);
+      for (let c = 0; c < this.channels; c++) {
+        const src = input[c];
+        const dst = this.bufs[c];
+        if (!src) dst.fill(0, this.fill, this.fill + count);
+        else dst.set(count === frames ? src : src.subarray(offset, offset + count), this.fill);
+      }
+      this.fill += count;
+      offset += count;
+      if (this.fill === this.batch) {
+        // Hand off the full batch directly to avoid a second PCM copy on the audio thread.
+        const data = this.bufs;
+        this.bufs = Array.from({ length: this.channels }, () => new Float32Array(this.batch));
+        this.port.postMessage({ frame: this.startFrame, data }, data.map((b) => b.buffer));
+        this.fill = 0;
+      }
     }
     return true;
   }

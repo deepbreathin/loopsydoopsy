@@ -70,6 +70,26 @@ export function renderLoop(raw, start, length, { fade = 0, fold = 0 } = {}) {
   return out;
 }
 
+// A dropped input block can leave digital silence between two loud samples. Fade at
+// those edges in the rendered audio, keeping the gap's timing and the raw take intact.
+export function fadeDropouts(samples, sampleRate) {
+  const minGap = Math.max(2, Math.ceil(sampleRate * 0.002));
+  const fade = Math.max(1, Math.round(sampleRate * 0.002));
+  const minJump = 0.02;
+  for (let i = 0; i < samples.length; i++) {
+    if (samples[i] !== 0) continue;
+    const start = i;
+    while (i < samples.length && samples[i] === 0) i++;
+    if (i - start < minGap) continue;
+    if (start > 0 && Math.abs(samples[start - 1]) > minJump) {
+      for (let j = 0; j < Math.min(fade, start); j++) samples[start - 1 - j] *= j / fade;
+    }
+    if (i < samples.length && Math.abs(samples[i]) > minJump) {
+      for (let j = 0; j < Math.min(fade, samples.length - i); j++) samples[i + j] *= j / fade;
+    }
+  }
+}
+
 // Turn a loop round by `shift` samples: out[j] = data[j - shift] (wrapping).
 export function rotate(data, shift) {
   const n = data.length;

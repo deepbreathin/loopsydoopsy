@@ -33,6 +33,44 @@ try {
   const ev = (fn, arg) => page.evaluate(fn, arg);
 
   await page.goto(`http://localhost:${PORT}/`);
+  // Render the production graph offline with loud loops and a count-in click.
+  // A compressor can let brief peaks exceed full scale, which a device would hard clip.
+  const audio = await ev(async () => {
+    const { Engine } = await import('./js/engine.js');
+    const sampleRate = 48000;
+    const offline = new OfflineAudioContext(1, sampleRate, sampleRate);
+    const AudioContext = window.AudioContext;
+    const engine = new Engine({ bpm: 120, beatsPerBar: 4 });
+    try {
+      window.AudioContext = function () { return offline; };
+      offline.resume = async () => {}; // OfflineAudioContext starts via startRendering().
+      await engine.init();
+    } finally {
+      window.AudioContext = AudioContext;
+      clearInterval(engine.timer);
+    }
+    const loop = offline.createBuffer(1, sampleRate / 5, sampleRate);
+    const signal = loop.getChannelData(0);
+    for (let i = 0; i < signal.length; i++) signal[i] = 4 * Math.sin(i * 2 * Math.PI * 440 / sampleRate);
+    for (const pad of engine.pads) {
+      pad.buffer = loop;
+      engine.startLoopAt(pad, 0.1);
+    }
+    // Rebuilding an existing pad softens a captured dropout without editing its raw PCM.
+    const pad = engine.pads[0];
+    pad.raw = new Float32Array(loop.length).fill(0.5);
+    pad.raw.fill(0, 2048, 2176);
+    pad.sampleRate = sampleRate;
+    pad.lengthSamples = pad.raw.length;
+    engine.rebuild(pad);
+    const rebuilt = pad.buffer.getChannelData(0);
+    const dropoutSmoothed = pad.raw[2047] === 0.5 && pad.raw[2176] === 0.5 && rebuilt[2047] === 0 && rebuilt[2176] === 0;
+    engine.beep(0.2, true);
+    const output = (await offline.startRendering()).getChannelData(0);
+    return { dropoutSmoothed, outputPeak: output.reduce((peak, sample) => Math.max(peak, Math.abs(sample)), 0) };
+  });
+  assert.ok(audio.dropoutSmoothed, 'a saved pad smooths the abrupt edges of a mic dropout');
+  assert.ok(audio.outputPeak > 0.8 && audio.outputPeak < 0.99, `loud pads and count-in stay under full scale (${audio.outputPeak})`);
   await page.screenshot({ path: shots + '0-welcome.png' });
   await page.click('#basicsBtn');
   await sleep(200);

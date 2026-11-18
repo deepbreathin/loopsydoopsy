@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   barDur,
+  fadeDropouts,
   findOnset,
   loopOffset,
   nextBoundary,
@@ -65,6 +66,20 @@ test('renderLoop folds the overrun onto the start, fading out', () => {
 test('renderLoop pads with silence past the capture', () => {
   const out = renderLoop(new Float32Array([1, 1, 1]), 1, 5);
   assert.deepEqual([...out], [1, 1, 0, 0, 0]);
+});
+
+test('dropout fades remove abrupt edges without moving samples or changing a short zero crossing', () => {
+  const samples = new Float32Array(600).fill(0.5);
+  samples[120] = 0;
+  samples.fill(0, 240, 368); // one missing block at 48 kHz
+  fadeDropouts(samples, 48000);
+  assert.equal(samples.length, 600);
+  assert.deepEqual([...samples.slice(119, 122)], [0.5, 0, 0.5]);
+  assert.equal(samples[143], 0.5);
+  assert.equal(samples[240 - 49], 0.25);
+  assert.ok(samples.slice(239, 369).every((sample) => sample === 0));
+  assert.equal(samples[368 + 48], 0.25);
+  assert.equal(samples[464], 0.5);
 });
 
 test('findOnset finds a click after silence', () => {

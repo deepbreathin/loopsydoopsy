@@ -22,6 +22,8 @@ class CaptureProcessor extends AudioWorkletProcessor {
     if (!this.active) return true;
     const input = inputs[0];
     const frames = outputs[0][0].length;
+    // A discontinuity between render blocks must remain a gap in the recording timeline.
+    if (this.fill && currentFrame !== this.startFrame + this.fill) this.sendBatch();
     let offset = 0;
     while (offset < frames) {
       if (this.fill === 0) this.startFrame = currentFrame + offset;
@@ -34,15 +36,17 @@ class CaptureProcessor extends AudioWorkletProcessor {
       }
       this.fill += count;
       offset += count;
-      if (this.fill === this.batch) {
-        // Hand off the full batch directly to avoid a second PCM copy on the audio thread.
-        const data = this.bufs;
-        this.bufs = Array.from({ length: this.channels }, () => new Float32Array(this.batch));
-        this.port.postMessage({ frame: this.startFrame, data }, data.map((b) => b.buffer));
-        this.fill = 0;
-      }
+      if (this.fill === this.batch) this.sendBatch();
     }
     return true;
+  }
+
+  sendBatch() {
+    // Hand off the samples directly to avoid a second PCM copy on the audio thread.
+    const data = this.fill === this.batch ? this.bufs : this.bufs.map((b) => b.subarray(0, this.fill));
+    this.bufs = Array.from({ length: this.channels }, () => new Float32Array(this.batch));
+    this.port.postMessage({ frame: this.startFrame, data }, data.map((b) => b.buffer));
+    this.fill = 0;
   }
 }
 

@@ -23,9 +23,13 @@ test('capture batches keep frame positions and silence across render quanta', ()
   render(100, 3, [1, 2, 3], [11, 12, 13]);
   render(103, 3, [4, 5, 6]);
   render(106, 2);
+  render(108, 2, [7, 8]);
+  render(113, 4, [9, 10, 11, 12]);
 
   assert.deepEqual(messages, [
     { frame: 100, data: [Float32Array.of(1, 2, 3, 4), Float32Array.of(11, 12, 13, 0)] },
     { frame: 104, data: [Float32Array.of(5, 6, 0, 0), Float32Array.of(0, 0, 0, 0)] },
+    { frame: 108, data: [Float32Array.of(7, 8), Float32Array.of(0, 0)] },
+    { frame: 113, data: [Float32Array.of(9, 10, 11, 12), Float32Array.of(0, 0, 0, 0)] },
   ]);
 });

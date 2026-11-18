@@ -1,4 +1,4 @@
-import { applyEdits, barDur, beatDur, findOnset, median, mod, nextBoundary, peaks, phaseAt, renderLoop, rotate } from './timing.js';
+import { applyEdits, barDur, beatDur, fadeDropouts, findOnset, median, mod, nextBoundary, peaks, phaseAt, renderLoop, rotate } from './timing.js';
 
 export const PAD_COUNT = 8;
 
@@ -24,6 +24,9 @@ export const LOOP_LENGTHS = [1, 2, 4, 8]; // bars; powers of two so every loop l
 const KEEP_SECONDS = 45; // how much mic history to keep for pre-roll / tails
 const EDGE_FADE = 0.004; // seconds faded at loop seams
 const PLAY_FADE = 0.006; // seconds faded when a sound starts mid-way or is stopped (no clicks)
+const OUTPUT_RANGE = 8; // the waveshaper's [-1, 1] input represents mix levels from -8 to +8
+const OUTPUT_KNEE = 0.8;
+const OUTPUT_CEILING = 0.98;
 
 // A single pad. Plain data plus the live Web Audio nodes it owns.
 class Pad {
@@ -125,17 +128,27 @@ export class Engine extends EventTarget {
     // without it the pads still play.
     if (ctx.audioWorklet) await ctx.audioWorklet.addModule(new URL('./capture-worklet.js', import.meta.url));
     this.master = ctx.createGain();
-    // Stacking several vocal loops easily goes over full scale; a fast limiter keeps it clean.
+    // Compress the pads together, then protect the final speaker mix from transient peaks.
     this.limiter = ctx.createDynamicsCompressor();
     this.limiter.threshold.value = -3;
     this.limiter.knee.value = 0;
     this.limiter.ratio.value = 20;
     this.limiter.attack.value = 0.002;
     this.limiter.release.value = 0.12;
-    this.master.connect(this.limiter).connect(ctx.destination);
+    this.output = ctx.createGain();
+    this.output.gain.value = 1 / OUTPUT_RANGE;
+    const ceiling = ctx.createWaveShaper();
+    const headroom = OUTPUT_CEILING - OUTPUT_KNEE;
+    ceiling.curve = Float32Array.from({ length: 4097 }, (_, i) => {
+      const sample = OUTPUT_RANGE * (i / 2048 - 1);
+      const excess = Math.abs(sample) - OUTPUT_KNEE;
+      return excess <= 0 ? sample : Math.sign(sample) * (OUTPUT_KNEE + headroom * excess / (headroom + excess));
+    });
+    this.output.connect(ceiling).connect(ctx.destination);
+    this.master.connect(this.limiter).connect(this.output);
     this.clickBus = ctx.createGain();
     this.clickBus.gain.value = 0.5;
-    this.clickBus.connect(ctx.destination);
+    this.clickBus.connect(this.output);
     this.sink = ctx.createGain(); // keeps capture worklets pulled without making sound
     this.sink.gain.value = 0;
     this.sink.connect(ctx.destination);
@@ -241,7 +254,7 @@ export class Engine extends EventTarget {
     const monitor = ctx.createGain();
     monitor.gain.value = this.settings.monitor ? 1 : 0;
     live.connect(monitor);
-    monitor.connect(ctx.destination);
+    monitor.connect(this.output);
     this.mic = { stream, track: stream.getAudioTracks()[0], src, boost, node, live, monitor };
     this.micIdleSince = 0;
     if (this.session) live.connect(this.session.merger, 0, 1);
@@ -582,6 +595,7 @@ export class Engine extends EventTarget {
       fade: Math.round(EDGE_FADE * sr),
       fold: pad.fold && !pad.free ? Math.round(Math.min(this.bar / 2, 1.5) * sr) : 0,
     });
+    fadeDropouts(data, sr);
     // A take that began partway through the loop cycle is turned so its first sample sits at
     // the top of the cycle; then "from the beginning" still lines up with the other loops.
     const turn = pad.free || !pad.bars ? 0 : mod(pad.startBar || 0, pad.bars);
@@ -870,6 +884,7 @@ export class Engine extends EventTarget {
       mix.set(data[0], frame - first);
       voice.set(data[1], frame - first);
     }
+    fadeDropouts(voice, this.ctx.sampleRate);
     // The voice was sung along to what the performer heard, so it arrives one round-trip
     // late relative to the pads. Pull it back into time before mixing.
     const shift = Math.round(s.latency * this.ctx.sampleRate);
@@ -910,7 +925,7 @@ export class Engine extends EventTarget {
       const d = b.getChannelData(0);
       for (let j = 0; j < d.length; j++) d[j] = (Math.random() * 2 - 1) * (1 - j / d.length);
       src.buffer = b;
-      src.connect(ctx.destination);
+      src.connect(this.output);
       src.start(when);
     }
     const sr = ctx.sampleRate;

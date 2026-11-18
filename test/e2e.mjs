@@ -269,15 +269,14 @@ try {
 
   await page.click('#playBtn'); // stop
 
-  // New soundboard: save this one under a name, start fresh.
+  // Name this board in Soundboards, then start fresh without a discard prompt.
+  await page.click('#boardName');
+  await page.fill('#projectName', 'Humming ideas');
+  await page.click('#projectsSheet .close');
   await page.click('#newBoardBtn');
-  await sleep(200);
-  await page.screenshot({ path: shots + '9-new-ask.png' });
-  await page.click('#newSave');
-  await page.fill('#newName', 'Humming ideas');
-  await page.screenshot({ path: shots + '9b-new-name.png' });
-  await page.click('#newNameSave');
   await until(() => !loopsy.engine.pads[0].raw && loopsy.projects.current.name !== 'Humming ideas');
+  assert.ok(!(await page.locator('#newSheet').isVisible()), 'a named board skips the discard prompt');
+  assert.match(await page.locator('#toastMsg').textContent(), /Soundboard “Humming ideas” saved/);
   assert.match(await page.locator('#boardNameText').textContent(), /Soundboard/);
 
   // Record something in the new board, then "Don't save" it — and undo that.
@@ -286,6 +285,7 @@ try {
   await page.click('#playBtn');
   const throwaway = await ev(() => loopsy.projects.current.name);
   await page.click('#newBoardBtn');
+  await page.screenshot({ path: shots + '9-new-ask.png' });
   await page.click('#newDiscard');
   await until(() => !loopsy.engine.pads[3].raw);
   await page.click('#toastAction'); // Undo

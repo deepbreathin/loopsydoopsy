@@ -1,6 +1,6 @@
 {
   "name": "loopsydoopsy",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "type": "module",
   "description": "Colourful 8-pad loop recorder: an installable web app (PWA)",

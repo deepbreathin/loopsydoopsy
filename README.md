@@ -72,7 +72,7 @@ The repo used to build an Android app (APK) as well; that was retired in favour 
 | **● Rec** (top bar) | Records **just the pads**, with no mic and so no echo. Bring loops in and out while it runs, then tap Rec again to save the take. |
 | **Sing on top** (the white tile) | Records the pads **plus your voice**. Tap again to stop and save. During a Rec take, tapping it adds your voice from that moment. It shows a live level meter, so you can see quiet humming is getting through. |
 | **♫** | Your recorded takes: play them, share or save them as **MP3** (small, plays anywhere) or **WAV** (full quality), delete them (with undo). |
-| **＋ New soundboard** | Asks whether to keep the current soundboard. **Save it** lets you name it, then you get a fresh, empty board. **Don't save** lets it go (with Undo). |
+| **＋ New soundboard** | Saves a board you’ve already named and opens a fresh one. If the current board still has its automatic name, **Save it** lets you name and keep it, and **Don’t save** discards it (with Undo). |
 | **Soundboard name** (above the pads, tap it) | Your **Soundboards**: each keeps all eight pads' sounds and the tempo, saved as you go. Open, rename or duplicate them; **Save sounds as WAV** shares every pad's sound as its own file; **Back up / send** makes one `.loopsy` file (all sounds and settings) to keep in Drive or send to another phone, and **Open a backup** brings it back. |
 | **☰ Menu** | Getting started, Soundboards, FAQ & suggestions, **Looping basics**, settings, install, and the version with **Check for updates**. |
 | **Tempo** (tap the bpm) | BPM, tap tempo, time signature, count-in, mic boost, latency calibration and the rest of the settings. |
@@ -97,6 +97,8 @@ The app checks for a new version whenever it's opened or brought back to the fro
 ### Crackles
 
 Tempo & settings → **Sound** picks **Smooth** (asks the browser for more buffering to reduce crackles) or **Fast** (lowest delay). Android, iPhone, iPad and Firefox start on Smooth. If you switch modes and have previously calibrated latency, run Calibrate again. Phones limit pad redraws to about 30 frames a second and release the microphone a few seconds after recording finishes.
+
+Firefox for Android can still crackle because it ignores the Web Audio buffering hint. If you hear it, try Loopsy in Chrome on the same phone. You can move your board with **Back up / send** and **Open a backup**. [Mozilla’s audio bug report](https://bugzilla.mozilla.org/show_bug.cgi?id=2087144)
 
 ### Microphones, headphones and delay
 

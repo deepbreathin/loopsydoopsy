@@ -7,17 +7,23 @@ import { encodeWav } from './wav.js';
 
 const $ = (id) => document.getElementById(id);
 const fileName = (s) => s.replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '') || 'soundboard';
+const automaticName = /^(?:My loops|My first loops|Soundboard \d+)$/;
 
 export class Projects {
   constructor({ engine, settings, defaults, getSong, setSong, toast, onSwitch, share }) {
     Object.assign(this, { engine, settings, defaults, getSong, setSong, toast, onSwitch, share });
-    this.current = null; // { id, name }
+    this.current = null; // { id, name, named }
 
     $('projectName').addEventListener('input', (e) => {
-      this.current.name = e.target.value.trim() || 'Untitled';
+      const name = e.target.value.trim();
+      this.current.name = name || 'Untitled';
+      if (name) this.current.named = true;
+      const label = $('projectList').querySelector('.current b');
+      if (label) label.textContent = this.current.name;
       this.onSwitch?.();
       this.save();
     });
+    $('projectName').addEventListener('change', () => this.flush());
     $('dupProject').onclick = () => this.duplicate();
     $('exportWavs').onclick = () => this.exportWavs();
     $('exportBoard').onclick = () => this.exportBoard();
@@ -64,24 +70,26 @@ export class Projects {
 
   async flush() {
     clearTimeout(this.timer);
-    if (!this.current) return;
+    if (!this.current) return true;
     try {
       await store.saveProject(this.snapshot());
+      return true;
     } catch (e) {
       console.warn('save failed', e);
+      this.toast('Couldn’t save this soundboard. It’s still open.');
+      return false;
     }
   }
 
-  // Save the open soundboard before moving to another — or, if it never got any sounds,
-  // drop it so empty boards don't pile up in the list.
+  // Keep named boards and boards with material. Drop empty, automatically named drafts.
   async leave() {
-    if (!this.current) return;
-    if (!this.soundCount() && !this.getSong()?.sections?.length) {
+    if (!this.current) return true;
+    if (!this.current.named && !this.soundCount() && !this.getSong()?.sections?.length) {
       clearTimeout(this.timer);
       await store.deleteProject(this.current.id);
-    } else {
-      await this.flush();
+      return true;
     }
+    return this.flush();
   }
 
   apply(p) {
@@ -96,14 +104,15 @@ export class Projects {
       e.setVolume(pad, 0.9);
     });
     this.setSong(p.song);
-    this.current = { id: p.id, name: p.name };
+    // Older boards kept the name alone. Preserve custom names from those versions too.
+    this.current = { id: p.id, name: p.name, named: p.named ?? !automaticName.test(p.name) };
     store.setCurrentId(p.id);
     this.onSwitch?.();
   }
 
   async start(name, from = null) {
-    const id = Date.now();
-    const p = from ? { ...from, id, name } : { id, name, settings: { ...this.settings }, pads: [], song: null };
+    const id = Math.max(Date.now(), (this.current?.id ?? 0) + 1);
+    const p = from ? { ...from, id, name, named: true } : { id, name, named: false, settings: { ...this.settings }, pads: [], song: null };
     await store.saveProject({ ...p, updated: id });
     this.apply(p);
   }
@@ -129,37 +138,54 @@ export class Projects {
     };
     $('newNameBack').onclick = () => step('ask');
     $('newCancel').onclick = () => $('newSheet').close();
-    $('newNameSave').onclick = async () => {
+    $('newNameSave').onclick = () => {
       this.current.name = $('newName').value.trim() || this.current.name;
-      await this.flush();
-      const saved = this.current.name;
-      $('newSheet').close();
-      await this.start(await this.nextName());
-      this.toast(`Saved “${saved}” — here’s a fresh soundboard`);
+      this.current.named = true;
+      this.onSwitch?.();
+      return this.startFresh();
     };
-    $('newDiscard').onclick = async () => {
-      await this.flush();
+    $('newDiscard').onclick = () => this.startFresh(true);
+  }
+
+  async startFresh(discard = false) {
+    if (this.startingFresh) return;
+    this.startingFresh = true;
+    try {
+      if (discard) clearTimeout(this.timer);
+      else if (!(await this.flush())) return;
       const old = this.snapshot();
-      $('newSheet').close();
-      await store.deleteProject(old.id);
       await this.start(await this.nextName());
+      $('newSheet').close();
+      if (!discard) {
+        this.toast(`Soundboard “${old.name}” saved`);
+        return;
+      }
+      await store.deleteProject(old.id);
       this.toast(`Let “${old.name}” go — fresh soundboard`, 'Undo', async () => {
-        await this.leave();
+        if (!(await this.leave())) return;
         await store.saveProject(old);
         this.apply(old);
       });
-    };
+    } catch (e) {
+      console.warn('new soundboard failed', e);
+      this.save();
+      this.toast('Couldn’t finish switching soundboards.');
+    } finally {
+      this.startingFresh = false;
+    }
   }
 
   async newSoundboard() {
+    if (!this.current || this.startingFresh) return;
+    if (this.current.named) return this.startFresh();
     const n = this.soundCount();
-    if (!n) {
+    if (!n && !this.getSong()?.sections?.length) {
       // Nothing to keep: just make sure it's a clean slate.
       await this.flush();
       this.toast('This soundboard is already empty — tap a pad to record');
       return;
     }
-    $('newAskText').textContent = `“${this.current.name}” has ${n} sound${n === 1 ? '' : 's'}. Do you want to keep it? You can open it again any time from Soundboards.`;
+    $('newAskText').textContent = `Do you want to keep “${this.current.name}”? You can open saved boards from Soundboards.`;
     this.newStep('ask');
     $('newSheet').showModal();
   }
@@ -175,7 +201,7 @@ export class Projects {
 
   async open(id) {
     if (id === this.current.id) return;
-    await this.leave();
+    if (!(await this.leave())) return;
     const p = await store.loadProject(id);
     if (p) this.apply(p);
     this.render();
@@ -249,7 +275,7 @@ export class Projects {
   async importBoard(file) {
     try {
       const b = await decodeBoard(file);
-      await this.leave();
+      if (!(await this.leave())) return;
       await this.start(b.name || file.name.replace(/\.loopsy$/, ''), { settings: b.settings, song: b.song, pads: b.pads });
       this.toast(`Opened “${this.current.name}”`);
       this.render();

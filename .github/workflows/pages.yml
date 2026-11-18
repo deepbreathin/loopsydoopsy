@@ -36,7 +36,11 @@ jobs:
           node-version: 22
       - run: npm test
       - name: Stamp the version
-        run: sed -i "s/__BUILD__/$(date -u +%Y-%m-%d)-${GITHUB_SHA::7}/" www/js/version.js www/sw.js
+        run: |
+          version=$(node -p "require('./package.json').version")
+          build="$(date -u +%Y-%m-%d)-${GITHUB_SHA::7}"
+          sed -i "s/__BUILD__/${version}+${build}/" www/js/version.js
+          sed -i "s/__BUILD__/${build}/" www/sw.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

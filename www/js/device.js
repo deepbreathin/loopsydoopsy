@@ -1,9 +1,10 @@
 // Which browser this is, and the steps to install the app or allow the microphone in it.
 // Browsers move their menus around between versions, so each has a second route too.
 
-export function browserFrom(ua, { touchMac = false, brave = false } = {}) {
+export function browserFrom(ua, { touchMac = false, brave = false, touch = false } = {}) {
   const ios = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && touchMac);
-  const android = /Android/.test(ua);
+  // Android browsers asking for desktop sites say "Linux"/"X11"; a touch screen gives them away.
+  const android = /Android/.test(ua) || (touch && /Linux|X11/.test(ua) && !/CrOS/.test(ua));
   // Apps that open links in their own built-in browser (these can't record or install).
   if (/FBAN|FBAV|FB_IAB|Instagram|Line\/|Snapchat|TikTok|musical_ly|Twitter|LinkedInApp|GSA\//.test(ua) || (android && /; wv\)/.test(ua))) return 'inapp';
   if (ios) {
@@ -26,7 +27,12 @@ export function browserFrom(ua, { touchMac = false, brave = false } = {}) {
   return 'desktop-chrome';
 }
 
-export const browser = () => browserFrom(navigator.userAgent, { touchMac: navigator.maxTouchPoints > 1, brave: !!navigator.brave });
+export const browser = () =>
+  browserFrom(navigator.userAgent, {
+    touchMac: navigator.maxTouchPoints > 1,
+    brave: !!navigator.brave,
+    touch: navigator.maxTouchPoints > 0 && !!globalThis.matchMedia?.('(pointer: coarse)').matches,
+  });
 
 export const NAMES = {
   inapp: 'a browser inside another app',

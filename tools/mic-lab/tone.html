@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tone Test</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #111; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111; --fg: #eee; } }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.4 system-ui, sans-serif; padding: 16px; margin: 0; }
+  pre { white-space: pre-wrap; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>Tone test</h1>
+<p>A quiet steady tone plays from an ordinary audio player while the mic records with MediaRecorder: first with no Web Audio engine, then with one running (as Loopsy has). Jumps in the tone = spliced or stuttering audio.</p>
+<pre id="out"></pre>
+<script type="module">
+const out = document.getElementById('out');
+const log = (s) => (out.textContent += s + '\n');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const SR = 48000, F = 1000, SECS = 8;
+
+// A 1 s, 1 kHz tone as a WAV file, looped by an <audio> element (no Web Audio involved).
+function toneWav() {
+  const n = SR, b = new ArrayBuffer(44 + n * 2), v = new DataView(b);
+  const w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, SR, true); v.setUint32(28, SR * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(0.05 * 32767 * Math.sin((2 * Math.PI * F * i) / SR)), true);
+  return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+}
+function toneJumps(x, sr, skip = 0.5) {
+  const w = Math.round(sr * 0.002); let jumps = 0, prev = null;
+  for (let i = Math.round(skip * sr); i + w < x.length; i += w) {
+    let re = 0, im = 0;
+    for (let k = 0; k < w; k++) { const ph = (2 * Math.PI * F * (i + k)) / sr; re += x[i + k] * Math.cos(ph); im -= x[i + k] * Math.sin(ph); }
+    if (Math.hypot(re, im) / w < 1e-4) { prev = null; continue; }
+    const p = Math.atan2(im, re);
+    if (prev != null) { let d = p - prev; d = Math.atan2(Math.sin(d), Math.cos(d)); if (Math.abs(d) > 0.6) jumps++; }
+    prev = p;
+  }
+  return jumps;
+}
+async function take(stream, withEngine) {
+  let ctx = null;
+  if (withEngine) {
+    ctx = new AudioContext({ latencyHint: 'playback' });
+    await ctx.resume();
+    const o = ctx.createOscillator(); const g = ctx.createGain(); g.gain.value = 0; o.connect(g).connect(ctx.destination); o.start();
+  }
+  const el = new Audio(toneWav()); el.loop = true; await el.play();
+  await sleep(500);
+  const rec = new MediaRecorder(stream, { audioBitsPerSecond: 256000 });
+  const parts = []; rec.ondataavailable = (e) => parts.push(e.data);
+  rec.start(); await sleep(SECS * 1000); rec.stop(); await new Promise((r) => (rec.onstop = r));
+  el.pause(); await ctx?.close();
+  const buf = await new OfflineAudioContext(1, 1, SR).decodeAudioData(await new Blob(parts, { type: rec.mimeType }).arrayBuffer());
+  const x = buf.getChannelData(0);
+  let s = 0; for (const v of x) s += v * v;
+  return { withEngine, jumps: toneJumps(x, buf.sampleRate), levelDb: +(10 * Math.log10(s / x.length + 1e-20)).toFixed(1) };
+}
+const results = { ua: navigator.userAgent, when: new Date().toISOString(), tone: [] };
+try {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+  for (const eng of [false, true, false, true]) {
+    const r = await take(stream, eng);
+    results.tone.push(r);
+    log(`${eng ? 'WITH Web Audio engine   ' : 'no Web Audio engine     '} tone jumps ${r.jumps}  level ${r.levelDb} dB`);
+  }
+  stream.getTracks().forEach((t) => t.stop());
+} catch (e) { log(`error: ${e.name} ${e.message}`); }
+await fetch('/results', { method: 'POST', body: JSON.stringify(results) }).catch(() => {});
+log('Done.');
+</script>
+</body>
+</html>

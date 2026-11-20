@@ -1,0 +1,47 @@
+// In the real app on the phone: play a recorded voice take as a loop on pad 1, record pad 2 with
+// nobody singing, and compare levels. Pad 2 is then pure speaker-to-mic bleed.
+const v = await (await fetch('http://localhost:9333/json/version')).json();
+const ws = new WebSocket(v.webSocketDebuggerUrl); let id = 0; const P = new Map();
+const rpc = (m, params = {}, sessionId) => new Promise((res, rej) => { const n = ++id; P.set(n, { res, rej }); ws.send(JSON.stringify({ id: n, method: m, params, sessionId })); });
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && P.has(m.id)) { const q = P.get(m.id); P.delete(m.id); m.error ? q.rej(new Error(JSON.stringify(m.error))) : q.res(m.result); } };
+await new Promise((r) => (ws.onopen = r));
+const BASE = 'http://localhost:8222';
+const TAKE = process.argv[2];
+const url = `${BASE}/www/?lab${process.argv[3] ? '&' + process.argv[3] : ''}`;
+await rpc('Browser.grantPermissions', { origin: BASE, permissions: ['audioCapture'] }).catch(() => {});
+const { targetInfos } = await rpc('Target.getTargets');
+const t = targetInfos.find((x) => x.type === 'page' && x.url.startsWith(BASE));
+const { sessionId } = await rpc('Target.attachToTarget', { targetId: t.targetId, flatten: true });
+await rpc('Target.activateTarget', { targetId: t.targetId });
+await rpc('Runtime.enable', {}, sessionId);
+await rpc('Network.enable', {}, sessionId);
+await rpc('Network.setBypassServiceWorker', { bypass: true }, sessionId);
+await rpc('Page.navigate', { url }, sessionId);
+await new Promise((r) => setTimeout(r, 3500));
+const script = `(async () => {
+  for (const d of document.querySelectorAll('dialog[open]')) d.close();
+  const e = window.loopsyEngine;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  e.settings.countIn = false; e.settings.loopBars = 4; e.settings.echoCancel = ${process.env.EC === '1'};
+  await e.ensureMic();
+  const sr = e.ctx.sampleRate;
+  const raw = new Float32Array(await (await fetch('/tools/mic-lab/results/${TAKE}')).arrayBuffer());
+  const n = Math.round(e.bar * 4 * sr);
+  const loop = new Float32Array(n);
+  loop.set(raw.subarray(Math.round(0.4 * sr), Math.round(0.4 * sr) + n));
+  e.loadSound(e.pads[0], loop, sr, 4);
+  e.pads[0].enabled = true;
+  if (!e.running) e.startTransport();
+  await sleep(1500);
+  const pad = e.pads[1];
+  await e.record(pad);
+  while (!pad.raw || pad.rec) await sleep(200);
+  e.stopTransport();
+  const rms = (x) => { let s = 0; for (const v of x) s += v * v; return 10 * Math.log10(s / x.length + 1e-20); };
+  const pk = (x) => x.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+  await fetch('/audio?name=bleed-layer&sr=' + sr, { method: 'POST', body: pad.raw.slice().buffer });
+  return JSON.stringify({ voiceLoop: { rmsDb: +rms(loop).toFixed(1), peak: +pk(loop).toFixed(3) }, bleedLayer: { rmsDb: +rms(pad.raw).toFixed(1), peak: +pk(pad.raw).toFixed(3) }, echoCancel: !!e.settings.echoCancel });
+})()`;
+const res = await rpc('Runtime.evaluate', { expression: script, awaitPromise: true, userGesture: true, timeout: 120000 }, sessionId);
+console.log(res.result?.value ?? JSON.stringify(res));
+ws.close();

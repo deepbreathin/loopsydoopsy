@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bleed Test</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #111; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111; --fg: #eee; } }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.4 system-ui, sans-serif; padding: 16px; margin: 0; }
+  pre { white-space: pre-wrap; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>Bleed test</h1>
+<p>Plays a recorded voice through the speaker and records the mic with nobody singing: whatever arrives is speaker bleed. Runs with echo cancel off, then on.</p>
+<pre id="out"></pre>
+<script type="module">
+const out = document.getElementById('out');
+const log = (s) => (out.textContent += s + '\n');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const WORKLET = new URL('../../www/js/capture-worklet.js', location.href);
+const TAKE = 'results/20261120-144414-Take_1-app.f32';
+const rms = (x) => { let s = 0; for (const v of x) s += v * v; return +(10 * Math.log10(s / x.length + 1e-20)).toFixed(1); };
+const peak = (x) => +x.reduce((m, v) => Math.max(m, Math.abs(v)), 0).toFixed(3);
+
+async function run(ec, variant = 'default') {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: ec, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+  const st = stream.getAudioTracks()[0].getSettings();
+  const ctx = new AudioContext(variant === 'interactive' ? { latencyHint: 'interactive' } : variant === 'nohint' ? {} : { latencyHint: 'playback', sampleRate: st.sampleRate || undefined });
+  await ctx.resume();
+  await ctx.audioWorklet.addModule(WORKLET);
+  const raw = new Float32Array(await (await fetch(TAKE)).arrayBuffer());
+  const b = ctx.createBuffer(1, raw.length, 48000); b.copyToChannel(raw, 0);
+  const back = ctx.createBufferSource(); back.buffer = b; back.loop = true;
+  const g = ctx.createGain(); g.gain.value = 0.9; back.connect(g);
+  let el = null;
+  if (variant === 'element') {
+    // Play the engine's output through an <audio> element (Firefox's echo canceller sees those).
+    const dest = ctx.createMediaStreamDestination(); g.connect(dest);
+    el = new Audio(); el.srcObject = dest.stream; await el.play();
+  } else g.connect(ctx.destination);
+  const src = ctx.createMediaStreamSource(stream);
+  const node = new AudioWorkletNode(ctx, 'capture', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit', processorOptions: { channels: 1 } });
+  const chunks = [];
+  node.port.onmessage = (e) => chunks.push(e.data);
+  // Also tap exactly what is sent to the speaker, frame-aligned with the mic (same context).
+  const refNode = new AudioWorkletNode(ctx, 'capture', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit', processorOptions: { channels: 1 } });
+  const refChunks = [];
+  refNode.port.onmessage = (e) => refChunks.push(e.data);
+  g.connect(refNode); refNode.connect(ctx.createGain());
+  const sink = ctx.createGain(); sink.gain.value = 0; sink.connect(ctx.destination);
+  src.connect(node); node.connect(sink);
+  back.start();
+  await sleep(1500); // let echo cancelling adapt, as it would during a count-in
+  await sleep(7000);
+  back.stop(); el?.pause(); ctx.close(); stream.getTracks().forEach((t) => t.stop());
+  // Join both captures on the context's frame clock.
+  const join = (cs, from, to) => { const y = new Float32Array(to - from); for (const { frame, data } of cs) { const s = Math.max(from, frame), e = Math.min(to, frame + data[0].length); if (e > s) y.set(data[0].subarray(s - frame, e - frame), s - from); } return y; };
+  const from = Math.max(chunks[0].frame, refChunks[0]?.frame ?? 0);
+  const to = Math.min(chunks.at(-1).frame + chunks.at(-1).data[0].length, refChunks.length ? refChunks.at(-1).frame + refChunks.at(-1).data[0].length : Infinity);
+  const x = join(chunks, from, to);
+  const ref = join(refChunks, from, to);
+  const tag = `bleed-${variant}-${ec ? 'ec' : 'noec'}`;
+  await fetch(`/audio?name=${tag}-mic&sr=${ctx.sampleRate}`, { method: 'POST', body: x.slice().buffer });
+  await fetch(`/audio?name=${tag}-ref&sr=${ctx.sampleRate}`, { method: 'POST', body: ref.slice().buffer });
+  const r = { echoCancel: ec, variant, settings: st, voiceRmsDb: rms(raw), bleedRmsDb: rms(x), bleedPeak: peak(x) };
+  log(`[${variant}] echo cancel ${ec ? 'ON ' : 'OFF'}: bleed ${r.bleedRmsDb} dB (peak ${r.bleedPeak}) vs voice ${r.voiceRmsDb} dB · ${JSON.stringify({ ec: st.echoCancellation, agc: st.autoGainControl, ns: st.noiseSuppression, rate: st.sampleRate })}`);
+  return r;
+}
+
+const results = { ua: navigator.userAgent, when: new Date().toISOString(), bleed: [] };
+try {
+  const plan = (new URLSearchParams(location.search).get('plan') || 'off:default,on:default').split(',');
+  for (const step of plan) { const [ec, variant] = step.split(':'); results.bleed.push(await run(ec === 'on', variant)); }
+} catch (e) { log(`error: ${e.name} ${e.message}`); }
+await fetch('/results', { method: 'POST', body: JSON.stringify(results) }).catch(() => {});
+log('Done.');
+</script>
+</body>
+</html>

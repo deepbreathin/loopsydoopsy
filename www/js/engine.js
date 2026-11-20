@@ -5,8 +5,21 @@ export const PAD_COUNT = 8;
 // iPhone / iPad (iPadOS reports itself as a Mac with a touch screen).
 const UA = globalThis.navigator?.userAgent ?? '';
 const IOS = /iPad|iPhone|iPod/.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1);
-const MOBILE = IOS || /Android/.test(UA);
+// Phones and tablets, including ones asking for desktop sites (Firefox on Android then reports
+// itself as Linux): a touch screen is the giveaway.
+const TOUCH = !!globalThis.matchMedia?.('(pointer: coarse)').matches && (globalThis.navigator?.maxTouchPoints ?? 0) > 0;
+const MOBILE = IOS || /Android/.test(UA) || TOUCH;
 const SMOOTH_LATENCY_HINT = MOBILE ? 'playback' : 'balanced';
+// A phone's speaker sits next to its mic: without echo cancelling, every new layer picks up the
+// loops already playing, louder than the voice and clipped (measured on a OnePlus Open: +8 dB
+// over the singer, hitting full scale), so layers pile up distorted. Headphones don't need it.
+export const ECHO_CANCEL_DEFAULT = MOBILE;
+// Firefox's echo cancelling doesn't remove Web Audio playback (measured on Android: no change; the
+// speaker-to-mic delay wanders by tens of ms, so nothing can lock on). There the loops are turned
+// down while a take records instead, keeping the leak well under the voice.
+const DUCK_WHILE_RECORDING = /Firefox\//.test(UA) && MOBILE;
+const DUCK_GAIN = 0.25; // -12 dB
+const DUCK_LEAD = 0.35; // s: Firefox's speaker runs about a quarter-second behind; duck before the take
 const MIC_IDLE_SECONDS = 4;
 
 // Safari's audio session (iOS 16.4+): 'playback' plays loops at full volume through the
@@ -68,6 +81,7 @@ export class Engine extends EventTarget {
     this.settings = settings;
     this.ctx = null;
     this.latencyMode = MOBILE || /Firefox/.test(UA) ? 'smooth' : 'fast';
+    this.echoCancel = ECHO_CANCEL_DEFAULT; // per device (see main.js), not per soundboard
     this.running = false;
     this.origin = 0;
     this.pads = Array.from({ length: PAD_COUNT }, (_, i) => new Pad(i));
@@ -128,6 +142,7 @@ export class Engine extends EventTarget {
     // without it the pads still play.
     if (ctx.audioWorklet) await ctx.audioWorklet.addModule(new URL('./capture-worklet.js', import.meta.url));
     this.master = ctx.createGain();
+    this.duck = 1;
     // Compress the pads together, then protect the final speaker mix from transient peaks.
     this.limiter = ctx.createDynamicsCompressor();
     this.limiter.threshold.value = -3;
@@ -196,7 +211,7 @@ export class Engine extends EventTarget {
 
   async openStream() {
     const audio = {
-      echoCancellation: !!this.settings.echoCancel,
+      echoCancellation: !!this.echoCancel && !DUCK_WHILE_RECORDING,
       noiseSuppression: false,
       autoGainControl: false,
       channelCount: 1,
@@ -417,6 +432,7 @@ export class Engine extends EventTarget {
     if (!this.ctx) return;
     const now = this.now;
     for (const pad of this.pads) this.updatePad(pad, now);
+    if (DUCK_WHILE_RECORDING) this.updateDuck(now);
     // Let phones return to playback-only audio once recording and pre-roll are idle.
     if (MOBILE && this.mic) {
       if (this.micBusy()) this.micIdleSince = 0;
@@ -427,6 +443,16 @@ export class Engine extends EventTarget {
         this.emit('micreleased');
       }
     }
+  }
+
+  // Loops quieter while a take is being captured (start to end, plus the trip to the mic).
+  updateDuck(now) {
+    const lat = this.latency;
+    const recording = this.echoCancel && this.pads.some((p) => p.rec && now >= p.rec.start - DUCK_LEAD && now <= p.rec.end + lat);
+    const target = recording ? DUCK_GAIN : 1;
+    if (target === (this.duck ?? 1)) return;
+    this.duck = target;
+    this.master.gain.setTargetAtTime(target, now, 0.02);
   }
 
   // ---------- count-in ----------

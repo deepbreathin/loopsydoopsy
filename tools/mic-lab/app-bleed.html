@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>App Bleed Test</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #111; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111; --fg: #eee; } }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.4 system-ui, sans-serif; padding: 16px; margin: 0; }
+  pre { white-space: pre-wrap; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>App bleed test</h1>
+<p>Uses Loopsy’s own engine: a voice loop plays, then a new layer records with nobody singing. Whatever lands on it is speaker bleed.</p>
+<pre id="out"></pre>
+<script type="module">
+import { Engine } from '../../www/js/engine.js';
+const out = document.getElementById('out');
+const log = (s) => (out.textContent += s + '\n');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const q = new URLSearchParams(location.search);
+const TAKE = 'results/20261120-144414-Take_1-app.f32';
+const db = (x) => +(10 * Math.log10(x.reduce((a, v) => a + v * v, 0) / Math.max(1, x.length) + 1e-20)).toFixed(1);
+const pk = (x) => +x.reduce((m, v) => Math.max(m, Math.abs(v)), 0).toFixed(3);
+
+async function scenario(countIn, echo) {
+  const engine = new Engine({ bpm: 90, beatsPerBar: 4, loopBars: 2, countIn, countInBeeps: false, autoPlay: true, latencyMs: null, monitor: false, liveMic: false, micBoost: 1 });
+  if (echo != null) engine.echoCancel = echo;
+  if (q.has('nowait')) engine.micFlowing = async () => {};
+  await engine.init();
+  const sr = engine.ctx.sampleRate;
+  const raw = new Float32Array(await (await fetch(TAKE)).arrayBuffer());
+  const n = Math.round(engine.bar * 2 * sr);
+  const loop = new Float32Array(n);
+  loop.set(raw.subarray(Math.round(0.4 * sr), Math.round(0.4 * sr) + n));
+  engine.loadSound(engine.pads[0], loop, sr, 2);
+  engine.pads[0].enabled = true;
+  engine.startTransport();
+  await sleep(2000);
+  engine.releaseMic(); // as after a pause: the mic opens when the pad is tapped
+  const pad = engine.pads[1];
+  await engine.record(pad);
+  while (!pad.raw || pad.rec) await sleep(200);
+  engine.stopTransport();
+  const e = engine, m = e.mic;
+  const diag = { ctxState: e.ctx.state, rate: sr, now: +e.now.toFixed(2), chunks: e.micChunks.length, firstFrame: e.micChunks[0]?.frame, micUntil: e.micUntil, nowFrame: Math.round(e.now * sr), latency: +e.latency.toFixed(3), rec: [pad.trimStart, pad.lengthSamples, pad.raw.length], track: m?.track.getSettings?.(), trackState: m?.track.readyState, muted: m?.track.muted, nonzeroInRaw: pad.raw.reduce((a, v) => a + (v !== 0), 0) };
+  log('diag ' + JSON.stringify(diag));
+  const take = pad.raw.subarray(pad.trimStart, pad.trimStart + pad.lengthSamples);
+  const r = { diag, countIn, echoCancel: engine.echoCancel, voiceLoopDb: db(loop), bleedDb: db(take), bleedPeak: pk(take), firstHalfSecondDb: db(take.subarray(0, Math.round(0.5 * sr))), restDb: db(take.subarray(Math.round(0.5 * sr))) };
+  log(`count-in ${countIn ? 'on ' : 'off'} · echo cancel ${r.echoCancel ? 'on ' : 'off'}: bleed ${r.bleedDb} dB (peak ${r.bleedPeak}; first 0.5 s ${r.firstHalfSecondDb}, rest ${r.restDb}) vs voice ${r.voiceLoopDb} dB`);
+  await engine.ctx.close();
+  return r;
+}
+
+const results = { ua: navigator.userAgent, when: new Date().toISOString(), app: [] };
+try {
+  // Permission first (Firefox then lets audio start without a tap).
+  (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach((t) => t.stop());
+  const plan = (q.get('plan') || 'ci:on,ci:off,ci:on/ec:off').split(',');
+  for (const step of plan) {
+    const ci = !/ci:off/.test(step);
+    const ec = /ec:off/.test(step) ? false : /ec:on/.test(step) ? true : null;
+    results.app.push(await scenario(ci, ec));
+  }
+} catch (e) { log(`error: ${e.name} ${e.message}`); }
+await fetch('/results', { method: 'POST', body: JSON.stringify(results) }).catch(() => {});
+log('Done.');
+window.done = true;
+</script>
+</body>
+</html>

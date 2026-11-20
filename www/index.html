@@ -60,6 +60,10 @@
         <span>bars</span>
       </div>
       <p class="hint" id="hint">Tap an empty pad to record · tap to play · ⚙ for options</p>
+      <p class="browser-note" id="ffNote" hidden>
+        <span>For the best sound, use Chrome: Firefox can make recordings crackle.</span>
+        <button type="button" id="ffNoteClose" aria-label="Hide this note">✕</button>
+      </p>
     </footer>
 
     <div class="toast" id="toast" hidden><span id="toastMsg"></span><button id="toastAction"></button></div>
@@ -157,7 +161,8 @@
           <input type="range" id="setBoost" min="1" max="4" step="0.05" />
         </label>
         <p class="sub">Turn this up if humming or quiet singing looks small on the meter.</p>
-        <label class="row check"><input type="checkbox" id="setEcho" /> Echo cancellation (helps with no headphones; can dull the sound)</label>
+        <label class="row check"><input type="checkbox" id="setEcho" /> Echo cancellation: stops the loops leaking from the speaker into new recordings</label>
+        <p class="sub">On by default on phones, where the speaker sits right next to the mic. With wired headphones you can turn it off for the clearest sound.</p>
 
         <h3>Singing on top</h3>
         <label class="row check"><input type="checkbox" id="setMonitor" /> Hear your voice through the app (headphones only!)</label>

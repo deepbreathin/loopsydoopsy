@@ -2,3 +2,5 @@ node_modules/
 test/screens/
 help-server/node_modules/
 help-server/.wrangler/
+tools/mic-lab/live/
+tools/mic-lab/results/

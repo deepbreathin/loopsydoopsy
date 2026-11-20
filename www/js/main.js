@@ -22,7 +22,6 @@ const DEFAULTS = {
   countInBeeps: false,
   autoPlay: true,
   latencyMs: null,
-  echoCancel: false,
   monitor: false,
   liveMic: false,
   micBoost: 1,
@@ -30,6 +29,8 @@ const DEFAULTS = {
 
 const settings = { ...DEFAULTS };
 const engine = new Engine(settings);
+// ?lab: expose the engine for on-device audio testing (tools/mic-lab).
+if (new URLSearchParams(location.search).has('lab')) window.loopsyEngine = engine;
 let song = null; // { sections: [{ bars, pads: [bool × 8] }] }
 const projects = new Projects({
   engine,
@@ -576,8 +577,43 @@ const checks = {
   setCountIn: 'countIn',
   setBeeps: 'countInBeeps',
   setAutoPlay: 'autoPlay',
-  setEcho: 'echoCancel',
   setMonitor: 'monitor',
+};
+
+// Firefox (measured on Android) splices the microphone audio, worse while a Web Audio engine
+// runs, so recordings crackle; Chrome records cleanly. One quiet line, until it's dismissed.
+const FF_NOTE = 'firefoxNoteHidden';
+try {
+  if (browser().endsWith('firefox') && !localStorage.getItem(FF_NOTE)) $('ffNote').hidden = false;
+} catch {
+  if (browser().endsWith('firefox')) $('ffNote').hidden = false;
+}
+$('ffNoteClose').onclick = () => {
+  $('ffNote').hidden = true;
+  try {
+    localStorage.setItem(FF_NOTE, '1');
+  } catch {
+    /* storage blocked */
+  }
+};
+
+// Echo cancelling belongs to the device (phone speaker or headphones), not to a soundboard:
+// on by default on phones and tablets, kept here once the user changes it.
+const ECHO_KEY = 'echoCancel';
+try {
+  const v = localStorage.getItem(ECHO_KEY);
+  if (v === 'on' || v === 'off') engine.echoCancel = v === 'on';
+} catch {
+  /* storage blocked */
+}
+$('setEcho').onchange = async (e) => {
+  engine.echoCancel = e.target.checked;
+  try {
+    localStorage.setItem(ECHO_KEY, engine.echoCancel ? 'on' : 'off');
+  } catch {
+    /* storage blocked */
+  }
+  await engine.reopenMic().catch(micError);
 };
 
 // Keep the sound mode on this device if the user chose one explicitly.
@@ -651,6 +687,7 @@ function openSettings() {
   $('latInput').value = settings.latencyMs ?? '';
   $('latInput').placeholder = engine.ctx ? `auto (${Math.round(engine.latency * 1000)})` : 'auto';
   for (const [id, key] of Object.entries(checks)) $(id).checked = settings[key];
+  $('setEcho').checked = engine.echoCancel;
   $('setBoost').value = settings.micBoost;
   showBoost();
   const locked = engine.anyRecorded();
@@ -685,7 +722,6 @@ $('bpbInput').onchange = (e) => {
 for (const [id, key] of Object.entries(checks)) {
   $(id).onchange = async (e) => {
     settings[key] = e.target.checked;
-    if (key === 'echoCancel') await engine.reopenMic().catch(micError);
     if (key === 'monitor') engine.applyLiveSettings();
     save();
   };

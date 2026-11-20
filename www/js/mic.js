@@ -276,7 +276,7 @@ export class MicGate {
         const ok = await within(this.engine.ensureMic(), 10000, null);
         if (!ok) throw Object.assign(new Error('it took too long to start'), { name: 'Timeout' });
         li.className = 'ok';
-        li.textContent = `✓ Loopsy’s recorder is ready (${this.engine.ctx.sampleRate} Hz)`;
+        li.textContent = `✓ Loopsy’s recorder is ready (${this.engine.ctx.sampleRate} Hz, echo cancellation ${this.engine.echoCancel ? 'on' : 'off'})`;
       } catch (e) {
         li.className = 'bad';
         li.textContent = `✗ Loopsy’s recorder didn’t start — ${e.name}: ${e.message}`;

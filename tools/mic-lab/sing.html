@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sing Test</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #111; --ok: #0a7d32; --bad: #b3261e; --accent: #e5484d; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111; --fg: #eee; --ok: #5bd17f; --bad: #ff8a80; } }
+  body { background: var(--bg); color: var(--fg); font: 18px/1.45 system-ui, sans-serif; margin: 0; padding: 20px 16px; text-align: center; }
+  h1 { font-size: 26px; margin: 8px 0 4px; }
+  #big { font-size: 64px; font-weight: 700; margin: 24px 0 8px; min-height: 80px; }
+  #say { font-size: 20px; min-height: 60px; }
+  button { font: inherit; font-size: 22px; padding: 18px 36px; border-radius: 14px; border: 0; background: var(--accent); color: #fff; }
+  button:disabled { opacity: 0.4; }
+  #meter { height: 16px; border-radius: 8px; background: color-mix(in srgb, var(--fg) 12%, transparent); overflow: hidden; margin: 18px 0; }
+  #meter div { height: 100%; width: 0; background: var(--ok); }
+  pre { text-align: left; white-space: pre-wrap; font-size: 12px; opacity: 0.8; }
+</style>
+</head>
+<body>
+<h1>Loopsy sing test</h1>
+<p id="intro">Two short takes, 8 seconds each. Sing, hum or beatbox exactly like you would in Loopsy, holding the phone where you normally do.</p>
+<div id="big"></div>
+<div id="say"></div>
+<div id="meter"><div></div></div>
+<button id="go">Start</button>
+<pre id="out"></pre>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const SECONDS = 8;
+const WORKLET = new URL('../../www/js/capture-worklet.js', location.href);
+const log = (s) => ($('out').textContent += s + '\n');
+
+function stats(x, sr) {
+  let peak = 0, over = 0, sum = 0, holes = 0;
+  for (let i = 0; i < x.length; i++) {
+    const v = Math.abs(x[i]);
+    if (v > peak) peak = v;
+    if (v >= 0.98) over++;
+    sum += v * v;
+  }
+  for (let i = Math.round(0.3 * sr); i < x.length; i++) {
+    if (x[i] !== 0) continue;
+    const s = i; while (i < x.length && x[i] === 0) i++;
+    if (i - s >= sr * 0.0005) holes++;
+  }
+  return { peak: +peak.toFixed(3), clippedPct: +(100 * over / x.length).toFixed(3), rmsDb: +(10 * Math.log10(sum / x.length + 1e-20)).toFixed(1), holes };
+}
+
+async function upload(name, x, sr) {
+  await fetch(`/audio?name=${encodeURIComponent(name)}&sr=${sr}`, { method: 'POST', body: x.buffer });
+}
+
+// Record from one stream through the app's own path (Web Audio + worklet, 'playback' context,
+// exactly like Loopsy on phones) and straight from the track (MediaStreamTrackProcessor) at once.
+async function take(label, constraints, backing = null) {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
+  const ctx = new AudioContext({ latencyHint: 'playback' });
+  await ctx.resume();
+  await ctx.audioWorklet.addModule(WORKLET);
+  const src = ctx.createMediaStreamSource(stream);
+  const node = new AudioWorkletNode(ctx, 'capture', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit', processorOptions: { channels: 1 } });
+  const chunks = [];
+  const bar = $('meter').firstChild;
+  node.port.onmessage = (e) => {
+    chunks.push(e.data);
+    let m = 0; for (const v of e.data.data[0]) m = Math.max(m, Math.abs(v));
+    bar.style.width = `${Math.min(100, m * 100)}%`;
+    bar.style.background = m >= 0.98 ? 'var(--bad)' : 'var(--ok)';
+  };
+  const sink = ctx.createGain(); sink.gain.value = 0; sink.connect(ctx.destination);
+  src.connect(node); node.connect(sink);
+  // Direct capture alongside, if this browser has it.
+  let direct = null;
+  const directParts = [];
+  let directRate = 0;
+  if (typeof MediaStreamTrackProcessor !== 'undefined') {
+    const reader = new MediaStreamTrackProcessor({ track: stream.getAudioTracks()[0].clone() }).readable.getReader();
+    direct = (async () => {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        directRate = value.sampleRate;
+        const b = new Float32Array(value.numberOfFrames);
+        value.copyTo(b, { planeIndex: 0, format: 'f32-planar' });
+        directParts.push(b);
+        value.close();
+      }
+    })();
+    direct.reader = reader;
+  }
+  let back = null;
+  if (backing) {
+    const raw = new Float32Array(await (await fetch(`results/${backing}`)).arrayBuffer());
+    const b = ctx.createBuffer(1, raw.length, 48000); b.copyToChannel(raw, 0);
+    back = ctx.createBufferSource(); back.buffer = b; back.loop = true;
+    const g = ctx.createGain(); g.gain.value = 0.9; back.connect(g).connect(ctx.destination); back.start();
+  }
+  for (let i = 3; i >= 1; i--) { $('big').textContent = i; $('say').textContent = `${label}: get ready…`; await sleep(800); }
+  chunks.length = 0; directParts.length = 0;
+  const t0 = performance.now();
+  $('say').textContent = `${label}: sing now!`;
+  while (performance.now() - t0 < SECONDS * 1000) { $('big').textContent = Math.ceil(SECONDS - (performance.now() - t0) / 1000); await sleep(100); }
+  $('big').textContent = '✓'; $('say').textContent = 'Saving…';
+  await sleep(150);
+  if (direct) { direct.reader.cancel(); await direct.catch(() => {}); }
+  back?.stop();
+  src.disconnect(); node.disconnect(); ctx.close();
+  stream.getTracks().forEach((t) => t.stop());
+  bar.style.width = '0';
+  const first = chunks[0].frame, last = chunks.at(-1);
+  const app = new Float32Array(last.frame + last.data[0].length - first);
+  for (const { frame, data } of chunks) app.set(data[0], frame - first);
+  const settings = stream.getAudioTracks()[0].getSettings();
+  const r = { label, backing, constraints, settings: { sampleRate: settings.sampleRate, autoGainControl: settings.autoGainControl, echoCancellation: settings.echoCancellation, noiseSuppression: settings.noiseSuppression }, app: stats(app, ctx.sampleRate) };
+  await upload(`${label}-app`, app, ctx.sampleRate);
+  if (directParts.length) {
+    const n = directParts.reduce((a, b) => a + b.length, 0);
+    const d = new Float32Array(n); let o = 0; for (const p of directParts) { d.set(p, o); o += p.length; }
+    r.direct = stats(d, directRate);
+    await upload(`${label}-direct`, d, directRate);
+  }
+  log(`${label}: app path ${JSON.stringify(r.app)}${r.direct ? `\n   direct ${JSON.stringify(r.direct)}` : ''}`);
+  return r;
+}
+
+if (new URLSearchParams(location.search).get('mode') === 'ec') $('intro').textContent = 'Two more takes. In the first, your earlier take plays from the speaker: sing along with it. The second has no backing. While the first plays, notice whether the backing sounds normal or quieter / tinny.';
+$('go').onclick = async () => {
+  $('go').disabled = true;
+  const results = { ua: navigator.userAgent, when: new Date().toISOString(), takes: [] };
+  try {
+    const MODE = new URLSearchParams(location.search).get('mode');
+    if (MODE === 'ec') {
+      // Echo cancelling on, singing along with your earlier take playing from the speaker.
+      results.takes.push(await take('Take 3 (echo cancel, with backing)', { echoCancellation: true, noiseSuppression: false, autoGainControl: false, channelCount: 1 }, '20261120-144414-Take_1-app.f32'));
+      $('say').textContent = 'Nice. Last one, no backing this time…'; await sleep(1500);
+      results.takes.push(await take('Take 4 (echo cancel, no backing)', { echoCancellation: true, noiseSuppression: false, autoGainControl: false, channelCount: 1 }));
+    } else {
+      results.takes.push(await take('Take 1', { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 }));
+      $('say').textContent = 'Nice. One more, same again…'; await sleep(1500);
+      results.takes.push(await take('Take 2', { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 }));
+    }
+    results.track = results.takes.map((t) => t.settings);
+    await fetch('/results', { method: 'POST', body: JSON.stringify(results) });
+    $('big').textContent = 'Done'; $('say').textContent = 'Thank you! That’s all — Claude has the recordings.';
+  } catch (e) {
+    $('say').textContent = `Something went wrong: ${e.name} ${e.message}`;
+    log(String(e.stack || e));
+  }
+  $('go').disabled = false;
+};
+</script>
+</body>
+</html>

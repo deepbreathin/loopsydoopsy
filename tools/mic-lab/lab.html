@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mic Lab</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #111; --ok: #0a7d32; --bad: #b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111; --fg: #eee; --ok: #5bd17f; --bad: #ff8a80; } }
+  body { background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; }
+  button { font: inherit; padding: 12px 18px; border-radius: 10px; border: 1px solid currentColor; background: none; color: inherit; }
+  pre { white-space: pre-wrap; font-size: 12px; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+</style>
+</head>
+<body>
+<h1>Mic Lab</h1>
+<p>Records a few seconds of the microphone under different audio set-ups and counts dropouts (gaps of perfect digital silence). Keep it quiet; nothing is played unless “tone” is on.</p>
+<button id="go">Run tests</button>
+<pre id="out"></pre>
+<script type="module">
+const out = document.getElementById('out');
+const log = (s, cls) => { const span = document.createElement('span'); if (cls) span.className = cls; span.textContent = s + '\n'; out.append(span); };
+const params = new URLSearchParams(location.search);
+const SECONDS = Number(params.get('s') || 6);
+const TONE = params.get('tone') === '1';
+const ONLY = params.get('only')?.split(',');
+const WORKLET = new URL('../../www/js/capture-worklet.js', location.href);
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Find dropouts: runs of exact zeros (a live mic with processing off never produces these).
+function analyse(x, sr, skip = 0.3) {
+  const minRun = Math.round(sr * 0.0005); // 0.5 ms
+  let runs = 0, longest = 0, zeroed = 0, clips = 0, peak = 0, sum = 0; const where = [];
+  const from = Math.round(skip * sr);
+  for (let i = from; i < x.length; i++) {
+    const v = Math.abs(x[i]);
+    if (v > peak) peak = v;
+    if (v >= 0.999) clips++;
+    sum += v * v;
+    if (x[i] === 0) {
+      const s = i;
+      while (i < x.length && x[i] === 0) i++;
+      const n = i - s;
+      if (n >= minRun) { runs++; zeroed += n; if (n > longest) longest = n; if (where.length < 12) where.push(`${(s / sr).toFixed(2)}s:${(n / sr * 1000).toFixed(1)}ms`); }
+    }
+  }
+  const n = Math.max(1, x.length - from);
+  return { where, runs, perSec: +(runs / (n / sr)).toFixed(2), longestMs: +(longest / sr * 1000).toFixed(1), zeroedPct: +(100 * zeroed / n).toFixed(2), peak: +peak.toFixed(3), clips, rmsDb: +(10 * Math.log10(sum / n + 1e-20)).toFixed(1) };
+}
+
+// Phase continuity of a known tone played through the speaker: jumps = spliced / lost audio.
+function toneJumps(x, sr, f, skip = 0.5) {
+  const w = Math.round(sr * 0.002);
+  const from = Math.round(skip * sr);
+  let jumps = 0, prev = null;
+  for (let i = from; i + w < x.length; i += w) {
+    let re = 0, im = 0;
+    for (let k = 0; k < w; k++) { const ph = 2 * Math.PI * f * (i + k) / sr; re += x[i + k] * Math.cos(ph); im -= x[i + k] * Math.sin(ph); }
+    const mag = Math.hypot(re, im) / w;
+    if (mag < 1e-4) { prev = null; continue; }
+    const p = Math.atan2(im, re);
+    if (prev != null) { let d = p - prev; d = Math.atan2(Math.sin(d), Math.cos(d)); if (Math.abs(d) > 0.6) jumps++; }
+    prev = p;
+  }
+  return jumps;
+}
+
+let shared = null; // one getUserMedia stream reused across tests
+async function getStream(constraints) {
+  return navigator.mediaDevices.getUserMedia({ audio: constraints });
+}
+const RAW = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 };
+
+// Worklet capture, like the app: MediaStreamSource -> AudioWorklet in the given context.
+async function workletCapture(ctx, stream, seconds) {
+  await ctx.audioWorklet.addModule(WORKLET);
+  let src;
+  try { src = ctx.createMediaStreamSource(stream); }
+  catch (e) { return { error: `${e.name}: ${e.message}` }; }
+  const node = new AudioWorkletNode(ctx, 'capture', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit', processorOptions: { channels: 1 } });
+  const chunks = [];
+  const arrivals = [];
+  node.port.onmessage = (e) => { chunks.push(e.data); arrivals.push(performance.now()); };
+  const sink = ctx.createGain(); sink.gain.value = 0; sink.connect(ctx.destination);
+  src.connect(node); node.connect(sink);
+  let osc;
+  if (TONE) { osc = ctx.createOscillator(); osc.frequency.value = 1000; const g = ctx.createGain(); g.gain.value = Number(params.get("tg") || 0.06); osc.connect(g).connect(ctx.destination); osc.start(); }
+  await sleep(seconds * 1000);
+  osc?.stop();
+  src.disconnect(); node.disconnect();
+  if (!chunks.length) return { error: 'no audio arrived' };
+  const first = chunks[0].frame, last = chunks.at(-1);
+  const total = last.frame + last.data[0].length - first;
+  const x = new Float32Array(total);
+  let frameGaps = 0, prevEnd = first; const gapAt = [];
+  for (const { frame, data } of chunks) { if (frame !== prevEnd) { frameGaps++; if (gapAt.length < 8) gapAt.push(`${((frame - first) / ctx.sampleRate).toFixed(2)}s:${frame - prevEnd}`); } x.set(data[0], frame - first); prevEnd = frame + data[0].length; }
+  // How bursty the audio thread is: the biggest gap between batch arrivals (each batch = 2048 frames).
+  let maxGap = 0; for (let i = 1; i < arrivals.length; i++) maxGap = Math.max(maxGap, arrivals[i] - arrivals[i - 1]);
+  return { x, sr: ctx.sampleRate, frameGaps, gapAt, maxArrivalGapMs: Math.round(maxGap) };
+}
+
+// MediaStreamTrackProcessor (Chrome): AudioData straight from the capture, bypassing Web Audio.
+async function mstpCapture(stream, seconds) {
+  if (typeof MediaStreamTrackProcessor === 'undefined') return { error: 'MediaStreamTrackProcessor not available' };
+  const track = stream.getAudioTracks()[0].clone();
+  const proc = new MediaStreamTrackProcessor({ track });
+  const reader = proc.readable.getReader();
+  const parts = []; let sr = 0, tsGaps = 0, prevEnd = null;
+  let toneCtx;
+  if (TONE) { toneCtx = new AudioContext(); await toneCtx.resume(); const o = toneCtx.createOscillator(); o.frequency.value = 1000; const g = toneCtx.createGain(); g.gain.value = Number(params.get("tg") || 0.06); o.connect(g).connect(toneCtx.destination); o.start(); await sleep(300); }
+  const until = performance.now() + seconds * 1000;
+  while (performance.now() < until) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    sr = value.sampleRate;
+    const n = value.numberOfFrames;
+    const buf = new Float32Array(n);
+    value.copyTo(buf, { planeIndex: 0, format: 'f32-planar' });
+    const ts = value.timestamp; // µs
+    if (prevEnd != null && Math.abs(ts - prevEnd) > 1500) tsGaps++;
+    prevEnd = ts + (n / sr) * 1e6;
+    parts.push(buf);
+    value.close();
+  }
+  reader.cancel(); track.stop(); toneCtx?.close();
+  const total = parts.reduce((a, b) => a + b.length, 0);
+  const x = new Float32Array(total); let o = 0; for (const p of parts) { x.set(p, o); o += p.length; }
+  return { x, sr, frameGaps: tsGaps };
+}
+
+// MediaRecorder on the same stream, alongside the worklet capture: the browser records the track itself.
+async function recorderCapture(stream, seconds) {
+  const ctx = new AudioContext();
+  await ctx.resume();
+  let osc;
+  if (TONE) { osc = ctx.createOscillator(); osc.frequency.value = 1000; const g = ctx.createGain(); g.gain.value = Number(params.get("tg") || 0.06); osc.connect(g).connect(ctx.destination); osc.start(); }
+  await sleep(300);
+  const types = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4', ''];
+  const mimeType = types.find((t) => !t || MediaRecorder.isTypeSupported(t));
+  const rec = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 256000 });
+  const parts = [];
+  rec.ondataavailable = (e) => parts.push(e.data);
+  // Worklet capture at the same time, for comparison.
+  const wl = workletCapture(ctx, stream, seconds);
+  rec.start();
+  await sleep(seconds * 1000);
+  rec.stop();
+  await new Promise((r) => (rec.onstop = r));
+  const w = await wl;
+  osc?.stop();
+  const blob = new Blob(parts, { type: rec.mimeType });
+  const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+  const x = decoded.getChannelData(0);
+  const res = { x, sr: decoded.sampleRate, frameGaps: 0, mime: rec.mimeType, worklet: w.x ? { toneJumps: TONE ? toneJumps(w.x, w.sr, 1000) : null } : w };
+  ctx.close();
+  return res;
+}
+
+const TESTS = [
+  { id: 'app-playback', label: 'Current app on phones (latencyHint playback)', ctx: { latencyHint: 'playback' } },
+  { id: 'balanced', label: 'latencyHint balanced', ctx: { latencyHint: 'balanced' } },
+  { id: 'interactive', label: 'latencyHint interactive', ctx: { latencyHint: 'interactive' } },
+  { id: 'nohint', label: 'No options at all (browser default)', ctx: {} },
+  { id: 'interactive-micrate', label: 'interactive, context at the mic’s own rate', ctx: { latencyHint: 'interactive' }, micRate: true },
+  { id: 'split', label: 'Split: playback context playing + separate interactive capture context', split: true },
+  { id: 'mstp', label: 'MediaStreamTrackProcessor (no Web Audio)', mstp: true },
+  { id: 'recorder', label: 'MediaRecorder (and the worklet at the same time)', recorder: true },
+];
+
+async function run() {
+  document.getElementById('go').disabled = true;
+  const results = { ua: navigator.userAgent, when: new Date().toISOString(), seconds: SECONDS, tone: TONE, tests: [] };
+  let stream;
+  const CONS = { raw: RAW, default: true, ec: { ...RAW, echoCancellation: true }, all: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, stereo: { ...RAW, channelCount: 2 }, rate48: { ...RAW, sampleRate: 48000 } }[params.get('cons') || 'raw'];
+  results.cons = params.get('cons') || 'raw';
+  try { stream = await getStream(CONS); }
+  catch (e) { log(`mic failed: ${e.name} ${e.message}`, 'bad'); return; }
+  const tr = stream.getAudioTracks()[0];
+  const st = tr.getSettings();
+  results.track = { label: tr.label, ...st };
+  log(`mic: ${tr.label} · ${JSON.stringify(st)}`);
+  for (const t of TESTS) {
+    if (ONLY && !ONLY.includes(t.id)) continue;
+    log(`\n▶ ${t.label}`);
+    const r = { id: t.id };
+    try {
+      let cap, info = {};
+      if (t.mstp) cap = await mstpCapture(stream, SECONDS);
+      else if (t.recorder) { cap = await recorderCapture(stream, SECONDS); info = { mime: cap.mime, workletAtSameTime: cap.worklet }; }
+      else if (t.split) {
+        const play = new AudioContext({ latencyHint: 'playback' });
+        const osc = play.createOscillator(); const g = play.createGain(); g.gain.value = 0; osc.connect(g).connect(play.destination); osc.start();
+        const capCtx = new AudioContext({ latencyHint: 'interactive' });
+        await play.resume(); await capCtx.resume();
+        info = { playRate: play.sampleRate, playBase: play.baseLatency, capRate: capCtx.sampleRate, capBase: capCtx.baseLatency };
+        cap = await workletCapture(capCtx, stream, SECONDS);
+        play.close(); capCtx.close();
+      } else {
+        const opts = { ...t.ctx };
+        if (t.micRate && st.sampleRate) opts.sampleRate = st.sampleRate;
+        const ctx = new AudioContext(opts);
+        await ctx.resume();
+        info = { rate: ctx.sampleRate, baseLatency: ctx.baseLatency, outputLatency: ctx.outputLatency };
+        cap = await workletCapture(ctx, stream, SECONDS);
+        ctx.close();
+      }
+      Object.assign(r, info);
+      if (cap.error) { r.error = cap.error; log(`  error: ${cap.error}`, 'bad'); }
+      else {
+        const a = analyse(cap.x, cap.sr);
+        Object.assign(r, a, { sr: cap.sr, frameGaps: cap.frameGaps, gapAt: cap.gapAt, maxArrivalGapMs: cap.maxArrivalGapMs });
+        if (TONE) r.toneJumps = toneJumps(cap.x, cap.sr, 1000);
+        const good = a.runs === 0 && !r.toneJumps;
+        log(`  ${JSON.stringify(info)}`);
+        log(`  holes at ${a.where.join(' ') || '-'} · frame gaps at ${cap.gapAt?.join(' ') || '-'}`);
+        log(`  dropouts ${a.runs} (${a.perSec}/s, longest ${a.longestMs} ms, ${a.zeroedPct}% silent) · gaps ${cap.frameGaps} · peak ${a.peak} · clips ${a.clips} · level ${a.rmsDb} dB${TONE ? ` · tone jumps ${r.toneJumps}` : ''}${cap.maxArrivalGapMs != null ? ` · burst ${cap.maxArrivalGapMs} ms` : ''}`, good ? 'ok' : 'bad');
+      }
+    } catch (e) { r.error = `${e.name}: ${e.message}`; log(`  error: ${r.error}`, 'bad'); }
+    results.tests.push(r);
+  }
+  stream.getTracks().forEach((t) => t.stop());
+  window.labResults = results;
+  try { await fetch('/results', { method: 'POST', body: JSON.stringify(results) }); log('\n(sent to the Mac)'); } catch { /* not served by the lab server */ }
+  log('\nDone.');
+  document.getElementById('go').disabled = false;
+}
+document.getElementById('go').onclick = run;
+window.runLab = run;
+if (params.get('auto') === '1') run();
+</script>
+</body>
+</html>

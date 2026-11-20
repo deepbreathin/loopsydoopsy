@@ -30,6 +30,10 @@ test('the browser is recognised from its user agent', async () => {
   };
   assert.equal(browserFrom('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Mobile Safari/537.36', { brave: true }), 'android-brave');
   assert.ok(INSTALL['android-brave'].length && MIC_UNBLOCK['android-brave'].length);
+  // Firefox on Android asking for desktop sites reports Linux; the touch screen gives it away.
+  const desktopMode = 'Mozilla/5.0 (X11; Linux x86_64; rv:160.0) Gecko/20100101 Firefox/160.0';
+  assert.equal(browserFrom(desktopMode, { touch: true }), 'android-firefox');
+  assert.equal(browserFrom(desktopMode), 'desktop-firefox');
   for (const [ua, want] of Object.entries(cases)) {
     const got = browserFrom(ua);
     assert.equal(got, want, ua);

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clock Test</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #111; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111; --fg: #eee; } }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.4 system-ui, sans-serif; padding: 16px; margin: 0; }
+  pre { white-space: pre-wrap; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>Audio clock test</h1>
+<p>Silent. Checks whether the audio engine keeps up with real time in different set-ups (1.000 = keeping up).</p>
+<pre id="out"></pre>
+<script type="module">
+const out = document.getElementById('out');
+const log = (s) => (out.textContent += s + '\n');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const WORKLET = new URL('../../www/js/capture-worklet.js', location.href);
+const q = new URLSearchParams(location.search);
+const SECS = Number(q.get('s') || 8);
+
+async function measure(label, build) {
+  const ctx = new AudioContext(q.get('hint') ? { latencyHint: q.get('hint') } : {});
+  await ctx.resume();
+  const cleanup = await build(ctx);
+  await sleep(1500);
+  const a = [performance.now(), ctx.currentTime];
+  await sleep(SECS * 1000);
+  const b = [performance.now(), ctx.currentTime];
+  const ratio = (b[1] - a[1]) / ((b[0] - a[0]) / 1000);
+  cleanup?.();
+  await ctx.close();
+  const r = { label, ratio: +ratio.toFixed(4), lostMsPerSec: Math.round((1 - ratio) * 1000) };
+  log(`${label.padEnd(44)} ${r.ratio}  (${r.lostMsPerSec} ms lost per second)`);
+  return r;
+}
+const silentOsc = (ctx) => { const o = ctx.createOscillator(); const g = ctx.createGain(); g.gain.value = 0; o.connect(g).connect(ctx.destination); o.start(); return o; };
+const capture = async (ctx, src) => {
+  await ctx.audioWorklet.addModule(WORKLET);
+  const n = new AudioWorkletNode(ctx, 'capture', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit', processorOptions: { channels: 1 } });
+  n.port.onmessage = () => {};
+  const z = ctx.createGain(); z.gain.value = 0; src.connect(n); n.connect(z).connect(ctx.destination);
+  return n;
+};
+
+const results = { ua: navigator.userAgent, when: new Date().toISOString(), hint: q.get('hint'), clock: [] };
+try {
+  const raw = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 };
+  // Mic first: Firefox only lets audio start without a tap once the page is using the mic.
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: raw });
+  results.clock.push(await measure('A. silent oscillator only (mic open)', (ctx) => { silentOsc(ctx); }));
+  results.clock.push(await measure('B. + recorder worklet (no mic input)', async (ctx) => { await capture(ctx, silentOsc(ctx)); }));
+  results.clock.push(await measure('C. mic -> silent gain (no worklet)', (ctx) => { const s = ctx.createMediaStreamSource(stream); const z = ctx.createGain(); z.gain.value = 0; s.connect(z).connect(ctx.destination); silentOsc(ctx); }));
+  results.clock.push(await measure('D. mic -> recorder worklet (like Loopsy)', async (ctx) => { await capture(ctx, ctx.createMediaStreamSource(stream)); }));
+  results.clock.push(await measure('E. silent oscillator again (mic open)', (ctx) => { silentOsc(ctx); }));
+} catch (e) { log(`error: ${e.name} ${e.message}`); }
+await fetch('/results', { method: 'POST', body: JSON.stringify(results) }).catch(() => {});
+log('Done.');
+window.done = true;
+</script>
+</body>
+</html>

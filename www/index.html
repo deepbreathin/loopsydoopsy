@@ -22,16 +22,6 @@
         <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
       </button>
 
-      <button class="tempo" id="tempoBtn" aria-label="Tempo">
-        <span class="beats" id="beatDots"></span>
-        <span class="bpm"><b id="bpmVal">90</b><small>bpm</small></span>
-      </button>
-
-      <button class="play-btn" id="playBtn" aria-label="Play">
-        <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z" /></svg>
-        <svg class="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
-      </button>
-
       <button class="rec-btn" id="recBtn" aria-label="Record what you play">
         <span class="rec-dot"></span><span class="rec-label" id="recLabel">Rec</span>
       </button>
@@ -326,7 +316,7 @@
     <dialog class="sheet" id="installSheet">
       <form method="dialog" class="help">
         <h2>Install Loopsy Doopsy</h2>
-        <p>Install Loopsy Doopsy so it opens like any other app and works offline. Your sounds are saved on this device (nothing is uploaded), and installing keeps them safe: browsers can tidy away a website's saved data if it isn't opened for a while, but not an installed app's.</p>
+        <p>Install Loopsy Doopsy to open it like any other app and use it offline. Your sounds are saved on this device. To keep a separate copy, use <b>Download all sounds</b> in Soundboards.</p>
         <div class="actions" id="installNowRow" hidden>
           <button type="button" class="primary" id="installNow">📲 Install now</button>
         </div>
@@ -334,7 +324,7 @@
         <ol id="installSteps"></ol>
         <p class="sub" id="installIosNote" hidden>Can't hear anything? Check the ring/silent switch on the side of the phone.</p>
         <details class="others"><summary>Using a different browser?</summary><div id="installOthers"></div></details>
-        <p class="sub">On a computer: <b>1–8</b> tap the pads, <b>Space</b> starts and stops, <b>R</b> records what you play.</p>
+        <p class="sub">On a computer: <b>1–8</b> tap the pads and <b>R</b> records what you play.</p>
         <button class="close primary" value="close">Done</button>
       </form>
     </dialog>
@@ -383,7 +373,7 @@
 
         <section>
           <h3>Make it a song</h3>
-          <p>Songs come from loops coming in and dropping out. Try: <i>one loop → build up → everything → drop to one or two → all back in → end on one</i>. Tap pads to bring them in and out while <b>● Rec</b> or <b>Sing on top</b> records it.</p>
+          <p>Songs come from loops coming in and dropping out. Try: <i>one loop → build up → everything → drop to one or two → all back in → end on one</i>. Tap pads to bring them in and out while <b>● Rec</b> or <b>Sing on top</b> records it. Open <b>Recordings (♫)</b> to listen and save the take.</p>
         </section>
 
         <section>
@@ -403,9 +393,9 @@
       <h1>Loopsy Doopsy</h1>
       <p class="lead">Hum, sing and stack your voice into songs.</p>
       <ol>
-        <li><b>Tap a pad to record.</b> Start humming when the hand reaches the red mark. The pad records for the full number of bars you chose.</li>
-        <li><b>Play it back and add layers.</b> Tap the other pads to record a beat, a harmony or a tune.</li>
-        <li><b>Made something you like?</b> Tap the soundboard name, then <b>Download all sounds</b> to keep your loops. To save a whole performance, tap <b>Rec</b>, then open <b>Recordings (♫)</b> to listen and save it.</li>
+        <li><b>Tap a pad to record.</b> Start singing when the hand reaches the red mark.</li>
+        <li><b>Tap a loop to play or stop it.</b> Record on other pads to add layers.</li>
+        <li><b>Download sounds you want to keep.</b> Tap the soundboard name, then <b>Download all sounds</b>. Your browser can clear saved sounds over time. You can also install Loopsy for offline use.</li>
       </ol>
       <div class="splash-actions">
         <button class="primary big" id="startBtn">Let's loop</button>

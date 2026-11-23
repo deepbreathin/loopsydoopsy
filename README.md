@@ -16,9 +16,9 @@ Every push to `main` publishes `www/` to **GitHub Pages**, at **https://loopsydo
 
 - **iPhone / iPad:** Safari → Share → **Add to Home Screen**.
 - **Android:** Chrome → ⋮ → **Install app**.
-- **Computer:** Chrome or Edge → the install icon in the address bar (Safari on a Mac: File → Add to Dock). Keys: **1–8** tap the pads, **Space** plays/stops, **R** records.
+- **Computer:** Chrome or Edge → the install icon in the address bar (Safari on a Mac: File → Add to Dock). Keys: **1–8** tap the pads and **R** records.
 
-The welcome screen shows how to record, play and download your loops. Once a visitor has recorded two loops in their browser, Loopsy offers to install the app for offline use. The install steps are also available under Menu → **Install the app**.
+The welcome screen shows how to record, play and download your loops, and explains that browsers can clear saved sounds. Once a visitor has recorded two loops in their browser, Loopsy offers to install the app for offline use. The install steps are also available under Menu → **Install the app**.
 
 **One-time setup:** the repo must be public (free Pages needs that), and in Settings → Pages → Build and deployment, Source must be **GitHub Actions**. Settings → General → Default branch should be `main`.
 
@@ -67,7 +67,6 @@ The repo used to build an Android app (APK) as well; that was retired in favour 
 | Tap a **loop pad** | Switches it on or off. A loop always starts **from its beginning**, timed to come in when the other loops come round; the pad says "in 3" while it waits. |
 | Tap a **one-shot pad** | Plays the sound once, straight away (Keezy style). Tap fast to stutter. |
 | **⚙** on a pad (top left) | Options: Loop / One-shot, **volume**, **Trim & silence**, re-record, clear (with undo), **Save this sound** (downloads a WAV that remembers its tempo and length; **Share…** appears too on devices that can share files) and **Load a sound file**. On an empty pad it lets you load a sound into it. Holding a pad still works as a shortcut. |
-| **▶ / ■** | Starts or stops everything. Loops you've switched on start together from the top. |
 | **Next loop: 1 · 2 · 4 · 8 bars** | Sets the length of the next recording. |
 | **● Rec** (top bar) | Records **just the pads**, with no mic and so no echo. Bring loops in and out while it runs, then tap Rec again to save the take. |
 | **Sing on top** (the white tile) | Records the pads **plus your voice**. Tap again to stop and save. During a Rec take, tapping it adds your voice from that moment. It shows a live level meter, so you can see quiet humming is getting through. |
@@ -75,7 +74,7 @@ The repo used to build an Android app (APK) as well; that was retired in favour 
 | **＋ New soundboard** | Saves a board you’ve already named and opens a fresh one. If the current board still has its automatic name, **Save it** lets you name and keep it, and **Don’t save** discards it (with Undo). |
 | **Soundboard name** (above the pads, tap it) | Your **Soundboards**: each keeps all eight pads' sounds and the tempo, saved as you go. Open, rename or duplicate them; **Download all sounds** saves one ZIP containing a WAV for each recorded pad; **Share sounds…** opens the share sheet on devices that support file sharing; **Back up / send** makes one `.loopsy` file (all sounds and settings) to keep in Drive or send to another phone, and **Open a backup** brings it back. |
 | **☰ Menu** | Getting started, Soundboards, FAQ & suggestions, **Looping basics**, settings, install, and the version with **Check for updates**. |
-| **Tempo** (tap the bpm) | BPM, tap tempo, time signature, count-in, mic boost, latency calibration and the rest of the settings. |
+| Menu → **Tempo & settings** | BPM, tap tempo, time signature, count-in, mic boost, latency calibration and the rest of the settings. |
 
 ### Trim & silence (⚙ → Trim & silence)
 

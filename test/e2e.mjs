@@ -78,13 +78,21 @@ try {
   });
   assert.ok(audio.dropoutSmoothed, 'a saved pad smooths the abrupt edges of a mic dropout');
   assert.ok(audio.outputPeak > 0.8 && audio.outputPeak < 0.99, `loud pads and count-in stay under full scale (${audio.outputPeak})`);
-  assert.match(await page.locator('#splash').innerText(), /Download all sounds/);
-  assert.doesNotMatch(await page.locator('#splash').innerText(), /install/i);
+  const welcome = page.locator('#splash');
+  assert.match(await welcome.innerText(), /Download all sounds/);
+  assert.match(await welcome.innerText(), /browser can clear saved sounds/);
+  assert.match(await welcome.innerText(), /install Loopsy for offline use/);
+  assert.equal(await welcome.getByRole('button', { name: /install/i }).count(), 0);
   await page.screenshot({ path: shots + '0-welcome.png' });
   await page.click('#basicsBtn');
   await sleep(200);
   await page.screenshot({ path: shots + '0b-basics.png' });
   await page.click('#helpSheet .close');
+  assert.deepEqual(
+    await page.locator('.topbar button').evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))),
+    ['Menu', 'Record what you play', 'Recordings'],
+  );
+  assert.equal(await page.locator('.topbar .beats').count(), 0);
   await ev(() => {
     loopsy.settings.bpm = 160; // 1.5 s bars keep the test quick
     loopsy.settings.latencyMs = 30;
@@ -285,7 +293,9 @@ try {
   const names = await ev(async () => (await (await import('./js/storage.js')).listTakes()).map((t) => t.name));
   assert.ok(names.some((n) => !n.includes('voice')), 'a pads-only take');
 
-  await page.click('#playBtn'); // stop
+  await pads.nth(0).click();
+  await pads.nth(1).click();
+  await until(() => loopsy.engine.pads.slice(0, 2).every((pad) => !pad.source));
 
   // Name this board in Soundboards, then start fresh without a discard prompt.
   await page.click('#boardName');
@@ -300,7 +310,8 @@ try {
   // Record something in the new board, then "Don't save" it — and undo that.
   await pads.nth(3).click();
   await until(() => loopsy.engine.pads[3].state === 'ready', null, 9000);
-  await page.click('#playBtn');
+  await pads.nth(3).click();
+  await until(() => !loopsy.engine.pads[3].source);
   const throwaway = await ev(() => loopsy.projects.current.name);
   await page.click('#newBoardBtn');
   await page.screenshot({ path: shots + '9-new-ask.png' });
@@ -359,6 +370,10 @@ try {
   await until(() => loopsy.engine.pads[1].hasSound, null, 4000);
   assert.ok(await page.locator('#splash').evaluate((e) => !e.hidden), 'getting started shows on every visit');
   await page.click('#startBtn');
+  await pads.nth(1).click();
+  await until(() => !!loopsy.engine.pads[1].source);
+  await pads.nth(1).click();
+  await until(() => !loopsy.engine.pads[1].source);
 
   const layoutKind = () => ev(() => document.getElementById('grid').dataset.layout);
   for (const [w, h, kind, name] of [

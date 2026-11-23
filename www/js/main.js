@@ -42,7 +42,7 @@ const projects = new Projects({
   share,
   download,
   onSwitch: () => {
-    syncToggles();
+    syncLoopLength();
     const name = projects.current?.name ?? '';
     $('menuProject').textContent = name;
     $('boardNameText').textContent = name;
@@ -298,7 +298,6 @@ async function loadPadFile(pad, file) {
   if (m?.bpm && !others && !engine.running) {
     settings.bpm = m.bpm;
     settings.beatsPerBar = m.beatsPerBar || settings.beatsPerBar;
-    syncToggles();
   }
   const sameTempo = m && Math.abs(m.bpm - settings.bpm) < 0.05 && m.beatsPerBar === settings.beatsPerBar;
   const dur = a.samples.length / a.sampleRate;
@@ -335,20 +334,10 @@ $('padClear').onclick = () => {
   });
 };
 
-// ---------- play / record ----------
+// ---------- record a performance ----------
 //
 // A "take" records what comes out of the app. Rec takes just the pads (no mic, so no echo);
 // Sing on top adds your voice. Tapping Sing during a Rec take adds your voice from then on.
-
-$('playBtn').onclick = async () => {
-  await engine.init();
-  if (engine.running) stopAll();
-  else engine.startTransport();
-};
-
-function stopAll() {
-  engine.stopTransport();
-}
 
 let sessionStarted = 0;
 
@@ -442,7 +431,6 @@ $('menuSheet').addEventListener('click', (e) => {
   $('menuSheet').close();
   ({ projects: () => projects.show(), help: openHelp, settings: openSettings, install: openInstall, helpbox: () => helpBox.open(), welcome: showSplash })[what]();
 });
-$('tempoBtn').onclick = () => openSettings();
 $('boardName').onclick = () => projects.show();
 $('newBoardBtn').onclick = async () => {
   if (engine.session) await stopTake();
@@ -538,10 +526,6 @@ document.addEventListener('keydown', (e) => {
       engine.trigger(pad);
       flash(padEls[i].el);
     } else tap(pad, padEls[i].el);
-  } else if (e.key === ' ') {
-    e.preventDefault();
-    document.activeElement?.blur?.();
-    $('playBtn').click();
   } else if (e.key === 'r' || e.key === 'R') {
     $('recBtn').click();
   } else return;
@@ -553,15 +537,9 @@ function openHelp() {
   $('helpSheet').querySelector('form').scrollTop = 0;
 }
 
-function syncToggles() {
-  $('bpmVal').textContent = fmtBpm(settings.bpm);
+function syncLoopLength() {
   for (const b of document.querySelectorAll('.len-picker button')) {
     b.setAttribute('aria-checked', Number(b.dataset.bars) === settings.loopBars);
-  }
-  const dots = $('beatDots');
-  if (dots.children.length !== settings.beatsPerBar) {
-    dots.innerHTML = '<i></i>'.repeat(settings.beatsPerBar);
-    dots.firstChild.classList.add('one');
   }
 }
 
@@ -571,7 +549,7 @@ document.querySelector('.len-picker').addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (!b) return;
   settings.loopBars = Number(b.dataset.bars);
-  syncToggles();
+  syncLoopLength();
   save();
 });
 
@@ -704,7 +682,6 @@ function setBpm(v) {
   if (!Number.isFinite(v)) return;
   settings.bpm = Math.round(Math.min(240, Math.max(40, v)) * 10) / 10;
   $('bpmInput').value = settings.bpm;
-  syncToggles();
   save();
 }
 $('bpmInput').onchange = (e) => setBpm(Number(e.target.value));
@@ -720,7 +697,6 @@ $('tapBtn').onpointerdown = () => {
 };
 $('bpbInput').onchange = (e) => {
   settings.beatsPerBar = Number(e.target.value);
-  syncToggles();
   save();
 };
 for (const [id, key] of Object.entries(checks)) {
@@ -943,7 +919,6 @@ function frame(timestamp) {
   const bpb = settings.beatsPerBar;
   const beat = engine.beat;
   const bar = engine.bar;
-  const armed = engine.pads.find((p) => p.state === 'armed');
 
   engine.pads.forEach((pad, i) => {
     const pe = padEls[i];
@@ -993,15 +968,6 @@ function frame(timestamp) {
     cl.toggle('processing', pad.state === 'processing');
   });
 
-  // Beat lights: count towards a recording when one is waiting, otherwise follow the loops.
-  const dots = $('beatDots').children;
-  const ref = armed ? armed.rec.start : engine.origin;
-  const pos = engine.running || armed ? (t - ref) / beat : null;
-  const on = pos == null ? -1 : mod(Math.floor(pos + 1e-3), bpb);
-  const lit = pos != null && mod(pos, 1) < 0.5;
-  for (let i = 0; i < dots.length; i++) dots[i].classList.toggle('on', i === on && lit);
-  $('beatDots').classList.toggle('count-in', !!armed);
-
   if (singView?.w) {
     drawSing(singView.g, singView.w, singView.h, {
       recording: !!engine.session && settings.liveMic,
@@ -1014,7 +980,6 @@ function frame(timestamp) {
     singView.el.classList.toggle('recording', !!engine.session && settings.liveMic);
   }
 
-  document.body.classList.toggle('playing', engine.running);
   document.body.classList.toggle('session', !!engine.session);
   const recText = engine.session ? fmtTime((Date.now() - sessionStarted) / 1000) : 'Rec';
   if ($('recLabel').textContent !== recText) $('recLabel').textContent = recText;
@@ -1052,7 +1017,7 @@ try {
   toast('Couldn’t open your saved soundboards — you can still play; try reopening the app');
 }
 refreshTakesCount();
-syncToggles();
+syncLoopLength();
 sizeCanvases();
 requestAnimationFrame(frame);
 // Phones only let audio start from a gesture; unlock on the first touch anywhere.

@@ -1,7 +1,7 @@
 // End-to-end test: real Chromium, fake microphone, phone-sized viewport.
 // Run: npm run test:e2e   (needs Playwright; uses the globally installed one if present)
 import { createRequire } from 'node:module';
-import { spawn, execSync } from 'node:child_process';
+import { spawn, execFileSync, execSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import assert from 'node:assert/strict';
 
@@ -26,6 +26,13 @@ const errors = [];
 try {
   await sleep(500);
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, permissions: ['microphone'] });
+  await ctx.addInitScript(() => {
+    // Simulate the native share sheet on platforms that accept files.
+    Object.defineProperty(navigator, 'canShare', { value: ({ files }) => files.every((file) => file.type === 'audio/wav') });
+    Object.defineProperty(navigator, 'share', { value: async ({ files }) => {
+      window.sharedFileNames = files.map((file) => file.name);
+    } });
+  });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
@@ -71,6 +78,8 @@ try {
   });
   assert.ok(audio.dropoutSmoothed, 'a saved pad smooths the abrupt edges of a mic dropout');
   assert.ok(audio.outputPeak > 0.8 && audio.outputPeak < 0.99, `loud pads and count-in stay under full scale (${audio.outputPeak})`);
+  assert.match(await page.locator('#splash').innerText(), /Download all sounds/);
+  assert.doesNotMatch(await page.locator('#splash').innerText(), /install/i);
   await page.screenshot({ path: shots + '0-welcome.png' });
   await page.click('#basicsBtn');
   await sleep(200);
@@ -100,6 +109,7 @@ try {
   });
   assert.ok(Math.abs(info.dur - 1.5) < 0.002, `loop is exactly one bar (${info.dur})`);
   assert.ok(info.playing && info.enabled, 'loop starts playing after recording');
+  assert.ok(!(await page.locator('#toast').isVisible()), 'no install invite after one loop');
 
   // Record a 2-bar loop on pad 2 while pad 1 plays: it must start at the top of pad 1's loop.
   await page.click('.len-picker [data-bars="2"]');
@@ -112,7 +122,15 @@ try {
     return Math.min(ph, len - ph);
   });
   assert.ok(syncErr < 1e-6, 'new recording starts when the playing loop comes round');
+  await until(() => loopsy.engine.pads[1].state === 'recording');
+  await pads.nth(1).click();
+  await page.keyboard.press('2');
   await until(() => loopsy.engine.pads[1].state === 'ready', null, 9000);
+  const duration = await ev(() => loopsy.engine.pads[1].buffer.duration);
+  assert.ok(Math.abs(duration - 3) < 0.002, 'tapping a recording pad still captures two full bars');
+  await page.getByRole('button', { name: 'Install', exact: true }).click();
+  assert.ok(await page.locator('#installSheet').isVisible(), 'the second loop opens an optional route to installation');
+  await page.click('#installSheet .close');
   await until(() => !loopsy.engine.pads[1].rec, null, 6000);
   await sleep(700);
   await page.screenshot({ path: shots + '4-two-loops.png' });
@@ -299,12 +317,20 @@ try {
   await page.locator('#projectList li', { hasText: 'Humming ideas' }).locator('[data-a="open"]').click();
   await until(() => loopsy.engine.pads[0].raw && loopsy.projects.current.name === 'Humming ideas');
   await page.screenshot({ path: shots + '9c-soundboards.png' });
-  const wavs = [];
-  page.on('download', (d) => wavs.push(d.suggestedFilename()));
-  await page.click('#exportWavs');
-  await until(() => true);
-  await sleep(500);
-  assert.deepEqual(wavs.sort(), ['Humming-ideas-pad1.wav', 'Humming-ideas-pad2.wav'], 'each sound saves as a WAV');
+  const [archive] = await Promise.all([page.waitForEvent('download'), page.click('#exportWavs')]);
+  assert.equal(archive.suggestedFilename(), 'Humming-ideas-sounds.zip');
+  const archivePath = await archive.path();
+  execFileSync('unzip', ['-tqq', archivePath]);
+  const wavs = execFileSync('unzip', ['-Z1', archivePath], { encoding: 'utf8' }).trim().split('\n');
+  assert.deepEqual(wavs, ['Humming-ideas-pad1.wav', 'Humming-ideas-pad2.wav'], 'the ZIP contains every recorded pad');
+  for (const name of wavs) {
+    const wav = execFileSync('unzip', ['-p', archivePath, name]);
+    assert.equal(wav.toString('ascii', 0, 4), 'RIFF');
+    assert.equal(wav.toString('ascii', 8, 12), 'WAVE');
+  }
+  assert.equal(await ev(() => window.sharedFileNames), undefined, 'download skipped the available share sheet');
+  await page.click('#shareWavs');
+  assert.deepEqual(await ev(() => window.sharedFileNames), wavs, 'share offers the individual WAVs');
   const [backup] = await Promise.all([page.waitForEvent('download'), page.click('#exportBoard')]);
   const backupPath = shots + 'backup.loopsy';
   await backup.saveAs(backupPath);

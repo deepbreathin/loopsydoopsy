@@ -365,7 +365,7 @@ export class Engine extends EventTarget {
     for (const pad of this.pads) {
       if (!pad.rec || !pad.livePeaks || (pad.state !== 'recording' && pad.state !== 'processing' && pad.state !== 'armed')) continue;
       const s = Math.round((pad.rec.start + lat) * sr);
-      const len = Math.round((pad.rec.plannedEnd - pad.rec.start) * sr);
+      const len = Math.round((pad.rec.end - pad.rec.start) * sr);
       const bins = pad.livePeaks.length;
       const first = Math.max(0, s - frame);
       const end = Math.min(samples.length, s + len - frame);
@@ -512,25 +512,8 @@ export class Engine extends EventTarget {
     pad.reset();
     pad.bars = bars;
     pad.state = 'armed';
-    pad.rec = { start, end: start + bars * bar, plannedEnd: start + bars * bar, beeps: this.countInBeeps(start) };
+    pad.rec = { start, end: start + bars * bar, beeps: this.countInBeeps(start) };
     pad.livePeaks = new Float32Array(PEAK_BINS);
-    this.emit('change', pad);
-  }
-
-  // Tap while recording: finish early, at the next 1 / 2 / 4 bar mark so it still lines up.
-  finishEarly(pad) {
-    if (pad.state !== 'recording') return;
-    const elapsed = this.now + 0.05 - pad.rec.start;
-    const bars = LOOP_LENGTHS.find((b) => b < pad.bars && b * this.bar >= elapsed);
-    if (!bars) return;
-    const end = pad.rec.start + bars * this.bar;
-    // Squash the live waveform so the circle now represents the shorter loop.
-    const ratio = (end - pad.rec.start) / (pad.rec.plannedEnd - pad.rec.start);
-    const old = pad.livePeaks;
-    pad.livePeaks = old.map((_, b) => old[Math.min(old.length - 1, Math.floor(b * ratio))]);
-    pad.rec.end = end;
-    pad.rec.plannedEnd = end;
-    pad.bars = bars;
     this.emit('change', pad);
   }
 

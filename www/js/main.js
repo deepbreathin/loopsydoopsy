@@ -39,7 +39,8 @@ const projects = new Projects({
   getSong: () => song,
   setSong: (s) => (song = s ?? null),
   toast: (...a) => toast(...a),
-  share: (files, title) => share(files, title),
+  share,
+  download,
   onSwitch: () => {
     syncToggles();
     const name = projects.current?.name ?? '';
@@ -133,6 +134,7 @@ function bindPad(el, pad) {
   let down = false;
   el.addEventListener('pointerdown', (e) => {
     e.preventDefault();
+    if (pad.state === 'recording') return;
     down = true;
     long = false;
     el.classList.add('pressed');
@@ -179,12 +181,6 @@ async function tap(pad, el) {
     case 'armed':
       engine.cancelRecording(pad);
       break;
-    case 'recording': {
-      const before = pad.rec.end;
-      engine.finishEarly(pad);
-      if (pad.rec.end === before) toast('Finishing at the end of the loop');
-      break;
-    }
     case 'ready':
       if (pad.mode === 'loop') {
         engine.trigger(pad);
@@ -275,7 +271,7 @@ const canShareFiles = (() => {
     return false;
   }
 })();
-$('padShare').hidden = !canShareFiles;
+$('padShare').hidden = $('shareWavs').hidden = !canShareFiles;
 $('padLoad').onclick = () => $('padFile').click();
 $('padFile').onchange = (e) => {
   const f = e.target.files[0];
@@ -456,17 +452,19 @@ $('takesBtn').onclick = () => openTakes();
 
 // ---------- install (PWA) ----------
 
-// Installing matters: browsers may clear a site's storage if it isn't opened for a while
-// (Safari after about a week), but not an installed app's. So it's offered up front.
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault(); // offer it ourselves instead of a browser banner
   installPrompt = e;
-  $('splashInstallNow').hidden = false;
+  $('installNowRow').hidden = false;
 });
 const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 $('menuInstall').hidden = standalone;
-
+window.addEventListener('appinstalled', () => {
+  $('menuInstall').hidden = true;
+  $('installNowRow').hidden = true;
+  installPrompt = null;
+});
 
 // Fill an <ol> with steps.
 function steps(ol, list) {
@@ -479,11 +477,6 @@ function steps(ol, list) {
 }
 
 function showSplash() {
-  $('splashInstall').hidden = standalone;
-  const b = browser();
-  $('splashInstallFor').textContent = b === 'inapp' ? 'Open it in your phone’s browser first:' : `In ${NAMES[b]}:`;
-  steps($('splashInstallHow'), INSTALL[b]);
-  $('splashInstallNow').hidden = !installPrompt;
   $('splash').hidden = false;
 }
 
@@ -492,18 +485,29 @@ async function installNow() {
   installPrompt.prompt();
   const { outcome } = await installPrompt.userChoice;
   installPrompt = null;
-  $('splashInstallNow').hidden = true;
+  $('installNowRow').hidden = true;
   if (outcome === 'accepted') $('menuInstall').hidden = true;
   return outcome === 'accepted';
 }
-$('splashInstallNow').onclick = () => installNow();
-
-// After the first recording in a browser tab, a gentle reminder to install.
-let installNudged = standalone;
+// Offer installation once the visitor has made two loops, even across visits.
+const INSTALL_INVITE_KEY = 'loopsy.install-loops';
+const readInstallLoops = () => {
+  try {
+    return Number(localStorage.getItem(INSTALL_INVITE_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+};
+let installLoops = readInstallLoops();
 engine.addEventListener('recorded', () => {
-  if (installNudged) return;
-  installNudged = true;
-  setTimeout(() => toast('Install the app so your sounds are kept safe', 'How', openInstall), 1500);
+  if ($('menuInstall').hidden || installLoops >= 2) return;
+  installLoops++;
+  try {
+    localStorage.setItem(INSTALL_INVITE_KEY, installLoops);
+  } catch {
+    // The invite can still appear in this visit.
+  }
+  if (installLoops === 2) toast('Enjoying Loopsy? Install it to play offline.', 'Install', openInstall);
 });
 
 function openInstall() {
@@ -912,7 +916,7 @@ function hintText(t) {
       ? 'Waiting for the loops to come round to the top, then a one-bar count-in. Tap the pad to cancel.'
       : 'Counting in… start when the hand reaches the top. Tap the pad to cancel.';
   }
-  if (pads.some((p) => p.state === 'recording')) return 'Recording — the ring turns white in the last bar. Tap to finish early.';
+  if (pads.some((p) => p.state === 'recording')) return 'Recording the full loop. The ring turns white in the last bar.';
   if (engine.session) {
     return settings.liveMic
       ? 'Singing on top — tap the tile again to stop and save'
@@ -1026,8 +1030,7 @@ document.addEventListener('visibilitychange', () => document.hidden && projects.
 
 // ---------- boot ----------
 
-// Getting started on every visit: the tips, and (in a browser tab) how to install. Its
-// buttons are wired first, so nothing below can leave them dead.
+// Wire the welcome buttons before booting the soundboards.
 const dismissSplash = () => {
   $('splash').hidden = true;
   engine.init();
@@ -1037,7 +1040,6 @@ $('basicsBtn').onclick = () => {
   dismissSplash();
   openHelp();
 };
-showSplash();
 
 buildPads();
 // Ask the browser to keep our storage (Safari otherwise tidies away sites that go unused).

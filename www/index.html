@@ -201,7 +201,7 @@
       <form method="dialog">
         <div class="menu">
           <button type="button" data-open="projects">🎛 Soundboards<small id="menuProject"></small></button>
-          <button type="button" data-open="welcome">🚀 Getting started<small>the first steps, and installing the app</small></button>
+          <button type="button" data-open="welcome">🚀 Getting started<small>record, play and save</small></button>
           <button type="button" data-open="help">💡 Looping basics<small>bars, layers and leaving space</small></button>
           <button type="button" data-open="settings">⚙︎ Tempo &amp; settings</button>
           <button type="button" data-open="helpbox">💬 FAQ &amp; suggestions<small>how things work, or send an idea or a problem</small></button>
@@ -219,15 +219,17 @@
         <p class="sub">A soundboard keeps all eight pads' sounds and your tempo. It saves as you go.</p>
         <label class="row">Name <input type="text" id="projectName" maxlength="40" autocomplete="off" /></label>
         <div class="actions">
-          <button type="button" id="exportWavs">🔊 Save sounds as WAV</button>
-          <button type="button" id="exportBoard">📦 Back up / send</button>
+          <button type="button" class="primary" id="exportWavs">Download all sounds</button>
+          <button type="button" id="shareWavs" hidden>Share sounds…</button>
         </div>
+        <p class="sub">Downloads one ZIP with a WAV for each pad you’ve recorded.</p>
         <div class="actions">
+          <button type="button" id="exportBoard">📦 Back up / send</button>
           <button type="button" id="importBoard">📂 Open a backup</button>
           <button type="button" id="dupProject">Duplicate</button>
         </div>
         <input type="file" id="importFile" hidden />
-        <p class="sub"><b>Making music with a friend?</b> Tap <b>Back up / send</b> and send them the file. They open it with <b>Open a backup</b>, add their own layers, and send it back. Single sounds can go back and forth too: a pad's ⚙ → <b>Save this sound</b>, then send the file however you like.</p>
+        <p class="sub">A backup keeps the whole soundboard in one file you can reopen or send to a friend.</p>
         <h3>Your soundboards</h3>
         <ul class="takes" id="projectList"></ul>
         <button class="close" value="close">Done</button>
@@ -400,21 +402,10 @@
       </div>
       <h1>Loopsy Doopsy</h1>
       <p class="lead">Hum, sing and stack your voice into songs.</p>
-      <div class="install-card" id="splashInstall" hidden>
-        <b>📲 First, install it</b>
-        <p>Your sounds are saved on this device. Installing keeps them safe (browsers can tidy away sites you don't open for a while), and it works offline.</p>
-        <p class="how-for" id="splashInstallFor"></p>
-        <ol class="how" id="splashInstallHow"></ol>
-        <button type="button" class="primary" id="splashInstallNow" hidden>Install now</button>
-      </div>
-      <h2 class="steps-title">Getting started</h2>
       <ol>
-        <li><b>Headphones help</b>, so the loops don't leak into your mic (wired ones are best: Bluetooth adds a little delay). <b>No headphones?</b> Switch the other loops off while you record, then line the new one up afterwards (step 4).</li>
-        <li><b>Tap a pad.</b> It starts together with any loops playing: a hand moves round at the same pace as your loops; start humming as it reaches the <b>red mark</b> at the top. Try a low “bom… bom” first.</li>
-        <li><b>Line up with a loop:</b> watch the pad you want to match. Its playhead comes round to the top just as yours starts, so you can come in close.</li>
-        <li>A little off? Tap the pad's <b>⚙</b> → <b>Trim &amp; silence</b>. Pick another pad under <b>Compare with</b> to see the shapes of both sounds, then slide the <b>whole loop</b> into sync, or use <b>Move a part</b> to shift just one note. It plays with your other loops while you do it, and you can silence a breath there too.</li>
-        <li><b>Add layers</b> on other pads: a beat, then a tune. Tap pads to bring them in and out.</li>
-        <li>Tap <b>Sing on top</b> or <b>● Rec</b> to record a take, then <b>♫</b> to save it as an MP3.</li>
+        <li><b>Tap a pad to record.</b> Start humming when the hand reaches the red mark. The pad records for the full number of bars you chose.</li>
+        <li><b>Play it back and add layers.</b> Tap the other pads to record a beat, a harmony or a tune.</li>
+        <li><b>Made something you like?</b> Tap the soundboard name, then <b>Download all sounds</b> to keep your loops. To save a whole performance, tap <b>Rec</b>, then open <b>Recordings (♫)</b> to listen and save it.</li>
       </ol>
       <div class="splash-actions">
         <button class="primary big" id="startBtn">Let's loop</button>

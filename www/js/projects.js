@@ -4,14 +4,15 @@
 import * as store from './storage.js';
 import { decodeBoard, encodeBoard } from './boardfile.js';
 import { encodeWav } from './wav.js';
+import { zipFiles } from './zip.js';
 
 const $ = (id) => document.getElementById(id);
 const fileName = (s) => s.replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '') || 'soundboard';
 const automaticName = /^(?:My loops|My first loops|Soundboard \d+)$/;
 
 export class Projects {
-  constructor({ engine, settings, defaults, getSong, setSong, toast, onSwitch, share }) {
-    Object.assign(this, { engine, settings, defaults, getSong, setSong, toast, onSwitch, share });
+  constructor({ engine, settings, defaults, getSong, setSong, toast, onSwitch, share, download }) {
+    Object.assign(this, { engine, settings, defaults, getSong, setSong, toast, onSwitch, share, download });
     this.current = null; // { id, name, named }
 
     $('projectName').addEventListener('input', (e) => {
@@ -26,6 +27,7 @@ export class Projects {
     $('projectName').addEventListener('change', () => this.flush());
     $('dupProject').onclick = () => this.duplicate();
     $('exportWavs').onclick = () => this.exportWavs();
+    $('shareWavs').onclick = () => this.exportWavs(true);
     $('exportBoard').onclick = () => this.exportBoard();
     $('importBoard').onclick = () => $('importFile').click();
     $('importFile').onchange = (e) => {
@@ -240,13 +242,13 @@ export class Projects {
       list.append(li);
     }
     const has = this.soundCount() > 0;
-    $('exportWavs').disabled = $('exportBoard').disabled = !has;
+    $('exportWavs').disabled = $('shareWavs').disabled = $('exportBoard').disabled = !has;
   }
 
   // ---------- files ----------
 
   // Every pad's sound as its own WAV, exactly as it loops (trimmed).
-  async exportWavs() {
+  async exportWavs(send = false) {
     const base = fileName(this.current.name);
     const files = this.engine.pads
       .filter((p) => p.hasSound)
@@ -262,7 +264,11 @@ export class Projects {
         }),
         name: `${base}-pad${p.index + 1}.wav`,
       }));
-    if (files.length) await this.share(files, `${this.current.name} — sounds`);
+    if (!files.length) return;
+    if (send) return this.share(files, `${this.current.name} — sounds`);
+
+    const blob = await zipFiles(files);
+    this.download([{ blob, name: `${base}-sounds.zip` }]);
   }
 
   // The whole soundboard in one file you can keep anywhere and open again.

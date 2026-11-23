@@ -17,6 +17,7 @@ const SHELL = [
   'js/trim.js',
   'js/storage.js',
   'js/wav.js',
+  'js/zip.js',
   'js/capture-worklet.js',
   'js/boardfile.js',
   'js/layout.js',

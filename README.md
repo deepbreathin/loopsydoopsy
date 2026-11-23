@@ -12,13 +12,13 @@ It's an **installable web app (PWA)** for iPhone, iPad, Android and computers. I
 
 ## Use it on iPhone, Android or a computer (web app)
 
-Every push to `main` publishes `www/` to **GitHub Pages**, at **https://loopsydoopsy.xyz** (custom domain; Settings → Pages must have **Enforce HTTPS** ticked, because browsers only allow the microphone on https). Open that link, then:
+Every push to `main` publishes `www/` to **GitHub Pages**, at **https://loopsydoopsy.xyz** (custom domain; Settings → Pages must have **Enforce HTTPS** ticked, because browsers only allow the microphone on https). Open that link and tap **Let’s loop**. You can install it later:
 
 - **iPhone / iPad:** Safari → Share → **Add to Home Screen**.
 - **Android:** Chrome → ⋮ → **Install app**.
 - **Computer:** Chrome or Edge → the install icon in the address bar (Safari on a Mac: File → Add to Dock). Keys: **1–8** tap the pads, **Space** plays/stops, **R** records.
 
-Every visit opens on **Getting started** (tips for recording and lining loops up). In a browser tab it also says **install it first** and shows the steps for their device (Menu → Getting started brings it back; Menu → Install the app has the steps too). After their first recording it reminds them once more. Installing matters: sounds are saved on the device, and browsers may clear a website's saved data if it isn't opened for a while (Safari after about a week), but they don't clear an installed app's. Once installed it also works offline.
+The welcome screen shows how to record, play and download your loops. Once a visitor has recorded two loops in their browser, Loopsy offers to install the app for offline use. The install steps are also available under Menu → **Install the app**.
 
 **One-time setup:** the repo must be public (free Pages needs that), and in Settings → Pages → Build and deployment, Source must be **GitHub Actions**. Settings → General → Default branch should be `main`.
 
@@ -63,7 +63,7 @@ The repo used to build an Android app (APK) as well; that was retired in favour 
 | --- | --- |
 | Tap an **empty pad** | Records a loop after a **one-bar count-in**: a hand moves round the pad at the same pace as the loops (one turn = the whole loop, so on a 4-bar pad the count-in is the last quarter of the circle), and recording starts the moment it reaches the **red mark at the top** (silent unless you switch on beeps in Settings). With loops playing, it starts **together with them**: it waits (the pad says "starts with the loops") until they come round to the top, or for a shorter loop the next point they line up with it, and the hand only sweeps for the last bar. |
 | Watch the **ring** while recording | It fills **red** as you record, with beat ticks round the edge. In the **last bar it turns white** and counts down "finish in 3·2·1", so you know when to stop. |
-| Tap a pad **while it's recording** | Finishes early, at the next 1, 2 or 4 bar mark, so it still lines up. |
+| Record a loop | The recording runs for the full number of bars you chose. |
 | Tap a **loop pad** | Switches it on or off. A loop always starts **from its beginning**, timed to come in when the other loops come round; the pad says "in 3" while it waits. |
 | Tap a **one-shot pad** | Plays the sound once, straight away (Keezy style). Tap fast to stutter. |
 | **⚙** on a pad (top left) | Options: Loop / One-shot, **volume**, **Trim & silence**, re-record, clear (with undo), **Save this sound** (downloads a WAV that remembers its tempo and length; **Share…** appears too on devices that can share files) and **Load a sound file**. On an empty pad it lets you load a sound into it. Holding a pad still works as a shortcut. |
@@ -73,7 +73,7 @@ The repo used to build an Android app (APK) as well; that was retired in favour 
 | **Sing on top** (the white tile) | Records the pads **plus your voice**. Tap again to stop and save. During a Rec take, tapping it adds your voice from that moment. It shows a live level meter, so you can see quiet humming is getting through. |
 | **♫** | Your recorded takes: play them, share or save them as **MP3** (small, plays anywhere) or **WAV** (full quality), delete them (with undo). |
 | **＋ New soundboard** | Saves a board you’ve already named and opens a fresh one. If the current board still has its automatic name, **Save it** lets you name and keep it, and **Don’t save** discards it (with Undo). |
-| **Soundboard name** (above the pads, tap it) | Your **Soundboards**: each keeps all eight pads' sounds and the tempo, saved as you go. Open, rename or duplicate them; **Save sounds as WAV** shares every pad's sound as its own file; **Back up / send** makes one `.loopsy` file (all sounds and settings) to keep in Drive or send to another phone, and **Open a backup** brings it back. |
+| **Soundboard name** (above the pads, tap it) | Your **Soundboards**: each keeps all eight pads' sounds and the tempo, saved as you go. Open, rename or duplicate them; **Download all sounds** saves one ZIP containing a WAV for each recorded pad; **Share sounds…** opens the share sheet on devices that support file sharing; **Back up / send** makes one `.loopsy` file (all sounds and settings) to keep in Drive or send to another phone, and **Open a backup** brings it back. |
 | **☰ Menu** | Getting started, Soundboards, FAQ & suggestions, **Looping basics**, settings, install, and the version with **Check for updates**. |
 | **Tempo** (tap the bpm) | BPM, tap tempo, time signature, count-in, mic boost, latency calibration and the rest of the settings. |
 

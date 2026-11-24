@@ -6,14 +6,55 @@ const TAU = Math.PI * 2;
 const WAVE_GAIN = 2.5;
 const angle = (f) => -Math.PI / 2 + f * TAU;
 
-export function drawPad(g, w, h, pad, v) {
+const ink = 'rgba(20,14,30,';
+
+export function resizeCanvas(g, w, h, dpr) {
+  g.canvas.width = Math.round(w * dpr);
+  g.canvas.height = Math.round(h * dpr);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+// Keep the ring and waveform on their own canvas so moving playheads don't repaint them.
+export class PadView {
+  constructor(face, motion) {
+    this.face = face.getContext('2d');
+    this.motion = motion.getContext('2d');
+  }
+
+  resize(w, h, dpr) {
+    const previous = this.geometry;
+    if (previous?.w === w && previous.h === h && this.dpr === dpr) return;
+    const R = Math.min(w, h) * 0.43;
+    this.geometry = { w, h, cx: w / 2, cy: h / 2, R, r0: R * 0.56, lw: Math.max(1.5, R * 0.025) };
+    this.dpr = dpr;
+    this.faceKey = this.motionKey = null;
+    resizeCanvas(this.face, w, h, dpr);
+    resizeCanvas(this.motion, w, h, dpr);
+  }
+
+  draw(pad, v, micFrame) {
+    const d = this.geometry;
+    if (!d?.w || !d.h) return;
+    const ready = v.state === 'ready';
+    const wave = ready ? pad.peaks : pad.livePeaks;
+    const faceKey = [v.state, v.beats, v.bpb, v.lengthLabel, v.volume, v.phase != null, wave && !ready ? micFrame : 0].join('/');
+    if (faceKey !== this.faceKey || wave !== this.wave) {
+      this.faceKey = faceKey;
+      this.wave = wave;
+      this.wavePath = drawFace(this.face, d, wave, v);
+    }
+    const moving = v.phase != null || v.pending || v.state === 'armed' || v.state === 'recording';
+    const motionKey = [v.state, v.enabled, v.mode, v.bars].join('/');
+    if (moving || this.wasMoving || motionKey !== this.motionKey) {
+      this.motionKey = motionKey;
+      this.wasMoving = moving;
+      drawMotion(this.motion, d, this.wavePath, v);
+    }
+  }
+}
+
+function drawFace(g, { w, h, cx, cy, R, r0, lw }, wave, v) {
   g.clearRect(0, 0, w, h);
-  const cx = w / 2;
-  const cy = h / 2;
-  const R = Math.min(w, h) * 0.43;
-  const r0 = R * 0.56;
-  const ink = 'rgba(20,14,30,';
-  const lw = Math.max(1.5, R * 0.025);
 
   // Ring track.
   g.lineWidth = lw;
@@ -47,16 +88,30 @@ export function drawPad(g, w, h, pad, v) {
     return;
   }
 
-  const wave = s === 'ready' ? pad.peaks : pad.livePeaks;
+  if (!wave) return null;
+  const fill = s === 'ready' ? (v.phase != null ? 0.24 : 0.2) : 0.35;
+  const path = waveformPath(cx, cy, r0, R * 0.38, R * 0.24, wave, WAVE_GAIN * v.volume);
+  g.fillStyle = ink + fill + ')';
+  g.fill(path);
+  return path;
+}
+
+function drawMotion(g, { w, h, cx, cy, R, r0, lw }, wavePath, v) {
+  g.clearRect(0, 0, w, h);
+  const s = v.state;
+  if (s === 'empty') return;
   const phase = v.phase;
 
-  if (wave) {
-    const fill = s === 'ready' ? (phase != null ? 0.24 : 0.2) : 0.35;
-    // Real size: what was recorded, scaled by the pad's volume, the same while recording
-    // and after. (A little display gain so quiet humming still shows.)
-    const gain = WAVE_GAIN * (v.volume ?? 1);
-    drawWave(g, cx, cy, r0, R * 0.38, R * 0.24, wave, 0, 1, ink + fill + ')', gain);
-    if (phase != null) drawWave(g, cx, cy, r0, R * 0.38, R * 0.24, wave, 0, phase, ink + '0.5)', gain);
+  if (wavePath && phase > 0) {
+    g.save();
+    g.beginPath();
+    g.moveTo(cx, cy);
+    g.arc(cx, cy, R, angle(0), angle(phase));
+    g.closePath();
+    g.clip();
+    g.fillStyle = ink + '0.5)';
+    g.fill(wavePath);
+    g.restore();
   }
 
   if (s === 'armed') {
@@ -154,7 +209,6 @@ export function drawPad(g, w, h, pad, v) {
     g.stroke();
     head(g, cx, cy, R, r0 * 0.35, phase, '#fff', lw);
   } else if (v.enabled && v.mode === 'loop') {
-    // Switched on but the transport is stopped: show it's queued for Play.
     g.lineWidth = lw * 1.6;
     g.strokeStyle = 'rgba(255,255,255,0.7)';
     circle(g, cx, cy, R);
@@ -186,30 +240,23 @@ function head(g, cx, cy, R, inner, f, color, lw) {
   dot(g, cx + Math.cos(a) * R, cy + Math.sin(a) * R, lw * 2.6, color);
 }
 
-// Radial waveform between fractions [f0, f1] of the loop: a ring that bulges with loudness.
-function drawWave(g, cx, cy, r0, outAmp, inAmp, wave, f0, f1, color, gain = 1) {
+// A closed path for the radial waveform, reused for the played portion.
+function waveformPath(cx, cy, r0, outAmp, inAmp, wave, gain) {
+  const path = new Path2D();
   const n = wave.length;
-  const i0 = Math.floor(f0 * n);
-  const i1 = Math.max(i0 + 1, Math.ceil(f1 * n));
-  if (i1 - i0 < 1) return;
-  g.fillStyle = color;
-  g.beginPath();
-  const pt = (i, r) => {
-    const a = angle(Math.min(i, n) / n);
-    return [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
+  const point = (i, inside) => {
+    const a = angle(i / n);
+    const amp = Math.sqrt(Math.min(1, wave[Math.min(i, n - 1)] * gain));
+    const r = inside ? r0 - amp * inAmp - 1 : r0 + amp * outAmp + 1;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
+    if (!inside && i === 0) path.moveTo(x, y);
+    else path.lineTo(x, y);
   };
-  for (let i = i0; i <= Math.min(i1, n); i++) {
-    const amp = Math.sqrt(Math.min(1, wave[Math.min(i, n - 1)] * gain));
-    const [x, y] = pt(i === i1 ? f1 * n : i, r0 + amp * outAmp + 1);
-    i === i0 ? g.moveTo(x, y) : g.lineTo(x, y);
-  }
-  for (let i = Math.min(i1, n); i >= i0; i--) {
-    const amp = Math.sqrt(Math.min(1, wave[Math.min(i, n - 1)] * gain));
-    const [x, y] = pt(i === i1 ? f1 * n : i, r0 - amp * inAmp - 1);
-    g.lineTo(x, y);
-  }
-  g.closePath();
-  g.fill();
+  for (let i = 0; i <= n; i++) point(i, false);
+  for (let i = n; i >= 0; i--) point(i, true);
+  path.closePath();
+  return path;
 }
 
 function label(g, x, y, size, color, text, bold) {

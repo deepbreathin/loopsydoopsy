@@ -63,9 +63,13 @@ test('renderLoop folds the overrun onto the start, fading out', () => {
   assert.ok(out[5] < out[1] && out[5] > 0);
 });
 
-test('renderLoop pads with silence past the capture', () => {
-  const out = renderLoop(new Float32Array([1, 1, 1]), 1, 5);
-  assert.deepEqual([...out], [1, 1, 0, 0, 0]);
+test('renderLoop pads with silence before and after the capture', () => {
+  const raw = new Float32Array([1, 2, 3]);
+  const channel = new Float32Array(6).fill(9);
+  const out = renderLoop(raw, -1, channel.length, { out: channel });
+  assert.equal(out, channel);
+  assert.deepEqual([...out], [0, 1, 2, 3, 0, 0]);
+  assert.deepEqual([...renderLoop(raw, 1, 5)], [2, 3, 0, 0, 0]);
 });
 
 test('dropout fades remove abrupt edges without moving samples or changing a short zero crossing', () => {

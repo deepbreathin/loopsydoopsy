@@ -51,12 +51,13 @@ export function peaks(data, bins, start = 0, length = data.length - start) {
 //  length    loop length in samples
 //  opts.fade   edge fade in samples (removes clicks at the loop seam)
 //  opts.fold   samples of overrun after the loop end to wrap back onto the start, faded out
-export function renderLoop(raw, start, length, { fade = 0, fold = 0 } = {}) {
-  const out = new Float32Array(length);
-  for (let i = 0; i < length; i++) {
-    const j = start + i;
-    out[i] = j >= 0 && j < raw.length ? raw[j] : 0;
-  }
+//  opts.out    optional destination, e.g. the channel of a new AudioBuffer
+export function renderLoop(raw, start, length, { fade = 0, fold = 0, out = new Float32Array(length) } = {}) {
+  const from = Math.max(0, start);
+  const end = Math.min(raw.length, start + length);
+  if (end > from) out.set(raw.subarray(from, end), from - start);
+  if (start < 0) out.fill(0, 0, Math.min(length, -start));
+  if (start + length > raw.length) out.fill(0, Math.max(0, raw.length - start));
   const f = Math.min(fade, Math.floor(length / 2));
   for (let i = 0; i < f; i++) out[i] *= i / f;
   const n = Math.min(fold, length, Math.max(0, raw.length - (start + length)));

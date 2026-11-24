@@ -600,7 +600,9 @@ export class Engine extends EventTarget {
     if (!pad.raw) return;
     const sr = pad.sampleRate;
     const src = pad.edits?.length ? this.editedRaw(pad) : pad.raw;
+    const buf = this.ctx?.createBuffer(1, pad.lengthSamples, sr);
     let data = renderLoop(src, pad.trimStart, pad.lengthSamples, {
+      out: buf?.getChannelData(0),
       fade: Math.round(EDGE_FADE * sr),
       fold: pad.fold && !pad.free ? Math.round(Math.min(this.bar / 2, 1.5) * sr) : 0,
     });
@@ -608,12 +610,11 @@ export class Engine extends EventTarget {
     // A take that began partway through the loop cycle is turned so its first sample sits at
     // the top of the cycle; then "from the beginning" still lines up with the other loops.
     const turn = pad.free || !pad.bars ? 0 : mod(pad.startBar || 0, pad.bars);
-    if (turn) data = rotate(data, Math.round((turn * pad.lengthSamples) / pad.bars));
-    if (this.ctx) {
-      const buf = this.ctx.createBuffer(1, data.length, sr);
-      buf.copyToChannel(data, 0);
-      pad.buffer = buf;
+    if (turn) {
+      data = rotate(data, Math.round((turn * pad.lengthSamples) / pad.bars));
+      buf?.copyToChannel(data, 0);
     }
+    if (buf) pad.buffer = buf;
     // Real loudness (not stretched to fill the pad), the same scale as the live view while
     // recording; the pad's volume is applied when it's drawn.
     pad.peaks = peaks(data, PEAK_BINS);
@@ -744,9 +745,8 @@ export class Engine extends EventTarget {
   }
 
   // 0..1 position of the pad's playhead (what you hear), or null when silent.
-  playhead(pad) {
+  playhead(pad, t = this.heardTime) {
     if (!pad.source || !pad.buffer) return null;
-    const t = this.heardTime;
     const len = pad.buffer.duration;
     if (t < (pad.mode === 'loop' ? pad.loopStartAt : pad.playFrom)) return null;
     if (pad.mode === 'oneshot') {

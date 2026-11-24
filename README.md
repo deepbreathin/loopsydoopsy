@@ -101,7 +101,7 @@ The app checks for a new version whenever it's opened or brought back to the fro
 
 ### Crackles
 
-Tempo & settings → **Sound** picks **Smooth** (asks the browser for more buffering to reduce crackles) or **Fast** (lowest delay). Android, iPhone, iPad and Firefox start on Smooth. If you switch modes and have previously calibrated latency, run Calibrate again. Phones limit pad redraws to about 30 frames a second and release the microphone a few seconds after recording finishes.
+Tempo & settings → **Sound** picks **Smooth** (asks the browser for more buffering to reduce crackles) or **Fast** (lowest delay). Android, iPhone, iPad and Firefox start on Smooth. If you switch modes and have previously calibrated latency, run Calibrate again. The pad waveform stays in place while the playhead redraws up to 60 times a second. Phones release the microphone a few seconds after recording finishes.
 
 Firefox for Android can still crackle because it ignores the Web Audio buffering hint. If you hear it, try Loopsy in Chrome on the same phone. You can move your board with **Back up / send** and **Open a backup**. [Mozilla’s audio bug report](https://bugzilla.mozilla.org/show_bug.cgi?id=2087144)
 

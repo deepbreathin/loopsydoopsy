@@ -1,6 +1,6 @@
 import { Engine, LOOP_LENGTHS, PAD_COUNT } from './engine.js';
 import { decodeWavBlob, readAudioFile, toMp3 } from './audio-files.js';
-import { drawPad, drawSing } from './pad-view.js';
+import { drawSing, PadView, resizeCanvas } from './pad-view.js';
 import * as layout from './layout.js';
 import { Projects } from './projects.js';
 import { HelpBox } from './help.js';
@@ -84,7 +84,7 @@ function buildPads() {
     const el = document.createElement('div');
     el.className = 'pad';
     el.style.setProperty('--c', `var(--p${i})`);
-    el.innerHTML = `<canvas></canvas><button type="button" class="cog" aria-label="Pad ${i + 1} settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/><circle cx="12" cy="12" r="6.2"/></svg></button><span class="num">${i + 1}</span>`;
+    el.innerHTML = `<canvas></canvas><canvas></canvas><button type="button" class="cog" aria-label="Pad ${i + 1} settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/><circle cx="12" cy="12" r="6.2"/></svg></button><span class="num">${i + 1}</span>`;
     grid.append(el);
     // The cog opens the pad's settings: a tap or click, so it works the same on phones and computers.
     const cog = el.querySelector('.cog');
@@ -94,8 +94,7 @@ function buildPads() {
       engine.init();
       if (engine.pads[i].state === 'ready' || engine.pads[i].state === 'empty') openPadSheet(engine.pads[i]);
     });
-    const canvas = el.querySelector('canvas');
-    padEls.push({ el, canvas, g: canvas.getContext('2d'), w: 0, h: 0 });
+    padEls.push({ el, view: new PadView(...el.querySelectorAll('canvas')) });
     bindPad(el, engine.pads[i]);
   }
   // The Sing tile: one tap records the pads plus your voice on top.
@@ -105,7 +104,7 @@ function buildPads() {
   el.innerHTML = '<canvas></canvas>';
   grid.append(el);
   const canvas = el.querySelector('canvas');
-  singView = { el, canvas, g: canvas.getContext('2d'), w: 0, h: 0 };
+  singView = { el, g: canvas.getContext('2d'), w: 0, h: 0 };
   el.addEventListener('click', toggleSing);
   const relayout = () => {
     layout.apply(grid, [...padEls.map((p) => p.el), el]);
@@ -118,13 +117,17 @@ function buildPads() {
 function sizeCanvases() {
   // Sharp enough without the cost of drawing at 3× (which competes with the audio on phones).
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  for (const p of [...padEls, singView]) {
-    const r = p.el.getBoundingClientRect();
-    p.w = r.width;
-    p.h = r.height;
-    p.canvas.width = Math.round(r.width * dpr);
-    p.canvas.height = Math.round(r.height * dpr);
-    p.g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  for (const { el, view } of padEls) {
+    const { width, height } = el.getBoundingClientRect();
+    view.resize(width, height, dpr);
+  }
+  const { width, height } = singView.el.getBoundingClientRect();
+  if (singView.w !== width || singView.h !== height || singView.dpr !== dpr) {
+    singView.w = width;
+    singView.h = height;
+    singView.dpr = dpr;
+    singView.key = null;
+    resizeCanvas(singView.g, width, height, dpr);
   }
 }
 
@@ -904,17 +907,13 @@ function hintText(t) {
 }
 
 let lastHint = '';
-// Phones redraw at 30 frames a second: smooth enough for sweeping playheads, and it leaves
-// the processor free for the audio (heavy drawing can make the sound crackle).
-const coarse = matchMedia('(pointer: coarse)').matches;
-const phoneFrameInterval = 1000 / 30;
-let nextPhoneFrame = 0;
+// Follow the screen up to 60 Hz. High-refresh displays don't need to draw every refresh.
+const frameInterval = 1000 / 60;
+let nextFrame = 0;
 function frame(timestamp) {
-  if (coarse) {
-    if (timestamp < nextPhoneFrame - 1) return requestAnimationFrame(frame);
-    if (timestamp - nextPhoneFrame >= phoneFrameInterval) nextPhoneFrame = timestamp;
-    nextPhoneFrame += phoneFrameInterval;
-  }
+  if (timestamp < nextFrame - 1) return requestAnimationFrame(frame);
+  if (timestamp - nextFrame >= frameInterval) nextFrame = timestamp;
+  nextFrame += frameInterval;
   const t = engine.heardTime;
   const bpb = settings.beatsPerBar;
   const beat = engine.beat;
@@ -923,7 +922,7 @@ function frame(timestamp) {
   engine.pads.forEach((pad, i) => {
     const pe = padEls[i];
     const bars = pad.bars ?? settings.loopBars;
-    const phase = pad.state === 'ready' ? engine.playhead(pad) : null;
+    const phase = pad.state === 'ready' ? engine.playhead(pad, t) : null;
     const v = {
       state: pad.state,
       bpb,
@@ -959,7 +958,7 @@ function frame(timestamp) {
       v.recBar = Math.min(bars, Math.floor((t - start) / bar) + 1);
       v.beatPulse = mod(t - start, beat) < 0.12;
     }
-    if (pe.w) drawPad(pe.g, pe.w, pe.h, pad, v);
+    pe.view.draw(pad, v, engine.micUntil);
     const cl = pe.el.classList;
     cl.toggle('has-sound', pad.hasSound);
     cl.toggle('active', phase != null);
@@ -968,20 +967,25 @@ function frame(timestamp) {
     cl.toggle('processing', pad.state === 'processing');
   });
 
-  if (singView?.w) {
+  const recording = !!engine.session;
+  const live = settings.liveMic;
+  const elapsed = recording ? fmtTime((Date.now() - sessionStarted) / 1000) : '';
+  const micOpen = !!engine.mic;
+  const singKey = [recording, live, elapsed, micOpen, engine.micUntil].join('/');
+  if (singView.w && singKey !== singView.key) {
+    singView.key = singKey;
     drawSing(singView.g, singView.w, singView.h, {
-      recording: !!engine.session && settings.liveMic,
-      padRec: !!engine.session && !settings.liveMic,
-      live: settings.liveMic,
-      micOpen: !!engine.mic,
+      recording: recording && live,
+      padRec: recording && !live,
+      micOpen,
       levels: engine.levels,
-      elapsed: engine.session ? fmtTime((Date.now() - sessionStarted) / 1000) : '',
+      elapsed,
     });
-    singView.el.classList.toggle('recording', !!engine.session && settings.liveMic);
+    singView.el.classList.toggle('recording', recording && live);
   }
 
-  document.body.classList.toggle('session', !!engine.session);
-  const recText = engine.session ? fmtTime((Date.now() - sessionStarted) / 1000) : 'Rec';
+  document.body.classList.toggle('session', recording);
+  const recText = elapsed || 'Rec';
   if ($('recLabel').textContent !== recText) $('recLabel').textContent = recText;
 
   const h = hintText(t);

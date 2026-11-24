@@ -106,10 +106,20 @@ export class Engine extends EventTarget {
   get now() {
     return this.ctx ? this.ctx.currentTime : 0;
   }
-  // What the listener is hearing right now (the output path adds delay).
+  // Project the device's last output timestamp to now. The render clock advances in
+  // blocks, and outputLatency can jump, especially as a phone switches audio routes.
   get heardTime() {
-    if (!this.ctx) return 0;
-    return this.ctx.currentTime - (this.ctx.outputLatency || this.ctx.baseLatency || 0);
+    const ctx = this.ctx;
+    if (!ctx) return 0;
+    const now = ctx.currentTime;
+    if (ctx.state === 'running') {
+      const stamp = ctx.getOutputTimestamp?.();
+      if (stamp?.performanceTime > 0 && stamp.contextTime > 0) {
+        const elapsed = Math.max(0, performance.now() - stamp.performanceTime) / 1000;
+        return Math.min(now, stamp.contextTime + elapsed);
+      }
+    }
+    return now - (ctx.outputLatency || ctx.baseLatency || 0);
   }
 
   // Round-trip latency in seconds: the time between scheduling a sound and the mic
@@ -361,10 +371,9 @@ export class Engine extends EventTarget {
     this.levels[this.levels.length - 1] = rms;
     // Feed the live waveform of any pad that is recording.
     const sr = this.ctx.sampleRate;
-    const lat = this.latency;
     for (const pad of this.pads) {
       if (!pad.rec || !pad.livePeaks || (pad.state !== 'recording' && pad.state !== 'processing' && pad.state !== 'armed')) continue;
-      const s = Math.round((pad.rec.start + lat) * sr);
+      const s = Math.round((pad.rec.start + pad.rec.latency) * sr);
       const len = Math.round((pad.rec.end - pad.rec.start) * sr);
       const bins = pad.livePeaks.length;
       const first = Math.max(0, s - frame);
@@ -447,8 +456,7 @@ export class Engine extends EventTarget {
 
   // Loops quieter while a take is being captured (start to end, plus the trip to the mic).
   updateDuck(now) {
-    const lat = this.latency;
-    const recording = this.echoCancel && this.pads.some((p) => p.rec && now >= p.rec.start - DUCK_LEAD && now <= p.rec.end + lat);
+    const recording = this.echoCancel && this.pads.some((p) => p.rec && now >= p.rec.start - DUCK_LEAD && now <= p.rec.end + p.rec.latency);
     const target = recording ? DUCK_GAIN : 1;
     if (target === (this.duck ?? 1)) return;
     this.duck = target;
@@ -512,7 +520,7 @@ export class Engine extends EventTarget {
     pad.reset();
     pad.bars = bars;
     pad.state = 'armed';
-    pad.rec = { start, end: start + bars * bar, beeps: this.countInBeeps(start) };
+    pad.rec = { start, end: start + bars * bar, latency: this.latency, beeps: this.countInBeeps(start) };
     pad.livePeaks = new Float32Array(PEAK_BINS);
     this.emit('change', pad);
   }
@@ -559,13 +567,12 @@ export class Engine extends EventTarget {
   // tail is in, so the trim editor can use it.
   collect(pad) {
     const sr = this.ctx.sampleRate;
-    const lat = this.latency;
-    const { start, end } = pad.rec;
+    const { start, end, latency } = pad.rec;
     const pre = Math.min(this.bar / 2, 1);
     const tail = Math.min(this.bar, 3);
-    const from = Math.round((start + lat - pre) * sr);
-    const takeEnd = Math.round((end + lat) * sr);
-    const tailEnd = Math.round((end + lat + tail) * sr);
+    const from = Math.round((start + latency - pre) * sr);
+    const takeEnd = Math.round((end + latency) * sr);
+    const tailEnd = Math.round((end + latency + tail) * sr);
     if (!pad.raw && this.micUntil >= takeEnd) {
       pad.raw = this.micRange(from, takeEnd);
       pad.sampleRate = sr;

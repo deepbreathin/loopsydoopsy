@@ -167,7 +167,7 @@ function drawMotion(g, { w, h, cx, cy, R, r0, lw }, wavePath, v) {
   }
 
   if (s === 'recording' || s === 'processing') {
-    const f = Math.min(1, v.recFrac);
+    const f = Math.min(1, Math.max(0, v.recFrac));
     const last = v.lastBar;
     // Progress arc: red while recording, white in the final bar so you know to wrap up.
     g.lineWidth = lw * 3.2;

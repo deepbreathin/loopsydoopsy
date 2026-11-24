@@ -1,5 +1,11 @@
 # Loopsy Doopsy
 
+The text below isn't written by me, I will write a punchy readme at some point but I think you will get the hang of it quickly if you play around with it also!
+
+It's seeming wibbly wobbly on Android and iOS currently, working well on computers but I will try to make the mobile version work well cos it'd be nice to loop out and about with pals eh!
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 A colourful loop recorder for your phone. There are eight pads. Tap one and it counts you in, records for exactly the number of bars you chose, then starts looping in time with everything else. Each pad shows its sound as a **circular waveform**, with a playhead sweeping round it, so you can always see where the loop starts and how long it is.
 
 https://github.com/user-attachments/assets/96072218-3509-495d-8163-cfc0fa2d5149
